@@ -1,0 +1,64 @@
+﻿namespace UELib.Types
+{
+    /// <summary>
+    /// Types describing a default property type.
+    /// </summary>
+    public enum PropertyType : byte
+    {
+        None 				= 0,
+        ByteProperty		= 1,
+        IntProperty			= 2,
+        BoolProperty		= 3,
+        FloatProperty		= 4,
+        ObjectProperty		= 5,	// Object, Component, Interface
+        NameProperty		= 6,
+        StringProperty		= 7,	// <= UE1, fixed string
+        DelegateProperty	= StringProperty,	// >= UE2, displaced StringProperty
+        ClassProperty		= 8,
+        ArrayProperty		= 9,	// >= UT, dynamic array
+        StructProperty		= 10, 	// Struct, Pointer
+        // 11, 12 moved to hardcoded structs.
+        StrProperty			= 13,	// >= UT, dynamic string
+        MapProperty			= 14,   // >= UT
+        FixedArrayProperty	= 15,	// >= UT, fixed array, < UE3
+        PointerProperty     = 16,	// >= UE2.5 (UT2004), < UE3
+
+#if BIOSHOCK
+        QwordProperty,              // (UE3, Bioshock Infinite)
+        XWeakReferenceProperty,
+#endif
+
+#if GIGANTIC
+        JsonRefProperty,
+#endif
+#if MASS_EFFECT
+        StringRefProperty,
+        BioMask4Property,
+#endif
+#if BORDERLANDS2 || BATTLEBORN
+        ByteAttributeProperty,
+        FloatAttributeProperty,
+        IntAttributeProperty,
+#endif
+#if BULLETSTORM
+        CppCopyStructProperty,
+#endif
+#if SA2
+        Int64Property,
+#endif
+#if BATMAN
+        GuidProperty,
+#endif
+        InterfaceProperty,  // >= UE3, displaced FixedArrayProperty, actual value 15, but we don't need the value for UE3 types.
+        ComponentProperty,	// >= UE3
+
+        StructOffset		= (1 + ComponentProperty),
+
+        // Helpers for serializing hardcoded structs.
+        Vector				= (2 + StructOffset),
+        Rotator				= (3 + StructOffset),
+
+        // Auto-conversions for old (<= 61) "StructName"s
+        Rotation = Rotator,
+    }
+}

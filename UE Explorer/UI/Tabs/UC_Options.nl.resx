@@ -120,9 +120,6 @@
   <data name="label2.Text" xml:space="preserve">
     <value>UE Model Viewer pad</value>
   </data>
-  <data name="groupBox3.Text" xml:space="preserve">
-    <value>Decompiler uitvoer</value>
-  </data>
   <data name="IndentionNumeric.ToolTip" xml:space="preserve">
     <value>Nummer spaties voor elke identatie</value>
   </data>
@@ -147,11 +144,11 @@
   <data name="SuppressComments.ToolTip" xml:space="preserve">
     <value>Onderdrukt commentaar, zoals als // End:0x00</value>
   </data>
+  <data name="groupBox3.Text" xml:space="preserve">
+    <value>Decompiler uitvoer</value>
+  </data>
   <data name="label6.Text" xml:space="preserve">
     <value>Invoer het pad naar UE Model Viewer voor geïntegreerde ondersteuning te krijgen voor het bekijken van Meshes en/of Textures in de Inhoud tab!</value>
-  </data>
-  <data name="groupBox6.Text" xml:space="preserve">
-    <value>Eigenschappen</value>
   </data>
   <data name="VariableType.ToolTip" xml:space="preserve">
     <value>Het gegevens type dat de array behoud</value>
@@ -163,14 +160,14 @@
     <value>Array declaratie pad Package.Class.Name
 </value>
   </data>
-  <data name="groupBox4.Text" xml:space="preserve">
-    <value>Derden</value>
+  <data name="groupBox6.Text" xml:space="preserve">
+    <value>Eigenschappen</value>
   </data>
   <data name="PathButton.ToolTip" xml:space="preserve">
     <value>Pad selecteren</value>
   </data>
-  <data name="groupBox1.Text" xml:space="preserve">
-    <value>Pakket initialisatie</value>
+  <data name="groupBox4.Text" xml:space="preserve">
+    <value>Derden</value>
   </data>
   <data name="CheckBox_LinkObj.Text" xml:space="preserve">
     <value>Verbind objecten</value>
@@ -189,8 +186,8 @@
   <data name="CheckBox_ImpObj.Text" xml:space="preserve">
     <value>Importeer objecten</value>
   </data>
-  <data name="groupBox2.Text" xml:space="preserve">
-    <value>Pakket Deserialisatie</value>
+  <data name="groupBox1.Text" xml:space="preserve">
+    <value>Pakket initialisatie</value>
   </data>
   <data name="CheckBox_LicenseeMode.Text" xml:space="preserve">
     <value>Gesimuleerde licentiehouder</value>
@@ -210,14 +207,14 @@
   <data name="ComboBox_NativeTable.ToolTip" xml:space="preserve">
     <value>Welke NativeFunctie definities te gebruiken</value>
   </data>
+  <data name="groupBox2.Text" xml:space="preserve">
+    <value>Pakket Deserialisatie</value>
+  </data>
   <data name="Button_Save.Text" xml:space="preserve">
     <value>Opslaan</value>
   </data>
   <data name="Button_Save.ToolTip" xml:space="preserve">
     <value>Alle veranderingen opslaan</value>
-  </data>
-  <data name="groupBox5.Text" xml:space="preserve">
-    <value>Array type definities</value>
   </data>
   <data name="DeleteArrayType.Text" xml:space="preserve">
     <value>Verwijderen</value>
@@ -230,5 +227,8 @@
   </data>
   <data name="NewArrayType.ToolTip" xml:space="preserve">
     <value>Toevoeg een nieuwe definitie</value>
+  </data>
+  <data name="groupBox5.Text" xml:space="preserve">
+    <value>Array type definities</value>
   </data>
 </root>

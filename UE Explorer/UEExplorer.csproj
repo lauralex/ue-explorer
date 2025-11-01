@@ -63,6 +63,7 @@
     <AssemblyName>$(MSBuildProjectName)</AssemblyName>
     <NeutralLanguage>en</NeutralLanguage>
     <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
+    <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
     <DocumentationFile></DocumentationFile>
@@ -81,9 +82,19 @@
     <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
     <DocumentationFile></DocumentationFile>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <DefineConstants>TRACE;DEBUG;DEBUG_WITH_LOCALHOST</DefineConstants>
+    <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
+    <DocumentationFile />
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
 	  <DebugType>none</DebugType>
 	  <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
+    <UseVSHostingProcess>true</UseVSHostingProcess>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <DebugType>none</DebugType>
+    <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
     <UseVSHostingProcess>true</UseVSHostingProcess>
   </PropertyGroup>
   <PropertyGroup>
@@ -284,6 +295,9 @@
     </EmbeddedResource>
     <EmbeddedResource Update="UI\Dialogs\NameReferenceInputDialog.nl.resx">
       <DependentUpon>NameReferenceInputDialog.resx</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Update="UI\Tabs\UC_Options.resx">
+      <Generator></Generator>
     </EmbeddedResource>
   </ItemGroup>
   <ProjectExtensions>

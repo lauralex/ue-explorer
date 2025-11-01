@@ -42,6 +42,15 @@
             this.PreBeginBracket = new System.Windows.Forms.TextBox();
             this.PreEndBracket = new System.Windows.Forms.TextBox();
             this.SuppressComments = new System.Windows.Forms.CheckBox();
+            this.ButtonAddNative = new System.Windows.Forms.Button();
+            this.ButtonRemoveNative = new System.Windows.Forms.Button();
+            this.ButtonSaveNatives = new System.Windows.Forms.Button();
+            this.groupBoxNatives = new System.Windows.Forms.GroupBox();
+            this.NativesListView = new System.Windows.Forms.ListView();
+            this.columnHeaderName = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.columnHeaderToken = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.columnHeaderType = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.columnHeaderPrecedence = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.VariableTypesTree = new System.Windows.Forms.TreeView();
             this.groupBox6 = new System.Windows.Forms.GroupBox();
             this.VariableType = new System.Windows.Forms.ComboBox();
@@ -77,6 +86,7 @@
             groupBox3.SuspendLayout();
             panel1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.IndentionNumeric)).BeginInit();
+            this.groupBoxNatives.SuspendLayout();
             this.groupBox6.SuspendLayout();
             this.groupBox4.SuspendLayout();
             this.groupBox1.SuspendLayout();
@@ -166,6 +176,70 @@
             label6.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(100)))), ((int)(((byte)(100)))));
             resources.ApplyResources(label6, "label6");
             label6.Name = "label6";
+            // 
+            // ButtonAddNative
+            // 
+            resources.ApplyResources(this.ButtonAddNative, "ButtonAddNative");
+            this.ButtonAddNative.Name = "ButtonAddNative";
+            this.ButtonAddNative.UseVisualStyleBackColor = true;
+            this.ButtonAddNative.Click += new System.EventHandler(this.ButtonAddNative_Click);
+            // 
+            // ButtonRemoveNative
+            // 
+            resources.ApplyResources(this.ButtonRemoveNative, "ButtonRemoveNative");
+            this.ButtonRemoveNative.Name = "ButtonRemoveNative";
+            this.ButtonRemoveNative.UseVisualStyleBackColor = true;
+            this.ButtonRemoveNative.Click += new System.EventHandler(this.ButtonRemoveNative_Click);
+            // 
+            // ButtonSaveNatives
+            // 
+            resources.ApplyResources(this.ButtonSaveNatives, "ButtonSaveNatives");
+            this.ButtonSaveNatives.Name = "ButtonSaveNatives";
+            this.ButtonSaveNatives.UseVisualStyleBackColor = true;
+            this.ButtonSaveNatives.Click += new System.EventHandler(this.ButtonSaveNatives_Click);
+            // 
+            // groupBoxNatives
+            // 
+            this.groupBoxNatives.Controls.Add(this.ButtonAddNative);
+            this.groupBoxNatives.Controls.Add(this.NativesListView);
+            this.groupBoxNatives.Controls.Add(this.ButtonRemoveNative);
+            this.groupBoxNatives.Controls.Add(this.ButtonSaveNatives);
+            resources.ApplyResources(this.groupBoxNatives, "groupBoxNatives");
+            this.groupBoxNatives.Name = "groupBoxNatives";
+            this.groupBoxNatives.TabStop = false;
+            this.groupBoxNatives.DoubleClick += new System.EventHandler(this.NativesListView_DoubleClick);
+            // 
+            // NativesListView
+            // 
+            this.NativesListView.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
+            this.columnHeaderName,
+            this.columnHeaderToken,
+            this.columnHeaderType,
+            this.columnHeaderPrecedence});
+            this.NativesListView.FullRowSelect = true;
+            this.NativesListView.GridLines = true;
+            this.NativesListView.HideSelection = false;
+            resources.ApplyResources(this.NativesListView, "NativesListView");
+            this.NativesListView.Name = "NativesListView";
+            this.NativesListView.UseCompatibleStateImageBehavior = false;
+            this.NativesListView.View = System.Windows.Forms.View.Details;
+            this.NativesListView.DoubleClick += new System.EventHandler(this.NativesListView_DoubleClick);
+            // 
+            // columnHeaderName
+            // 
+            resources.ApplyResources(this.columnHeaderName, "columnHeaderName");
+            // 
+            // columnHeaderToken
+            // 
+            resources.ApplyResources(this.columnHeaderToken, "columnHeaderToken");
+            // 
+            // columnHeaderType
+            // 
+            resources.ApplyResources(this.columnHeaderType, "columnHeaderType");
+            // 
+            // columnHeaderPrecedence
+            // 
+            resources.ApplyResources(this.columnHeaderPrecedence, "columnHeaderPrecedence");
             // 
             // VariableTypesTree
             // 
@@ -366,6 +440,7 @@
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.White;
+            this.Controls.Add(this.groupBoxNatives);
             this.Controls.Add(this.groupBox5);
             this.Controls.Add(this.groupBox4);
             this.Controls.Add(groupBox3);
@@ -378,6 +453,7 @@
             groupBox3.PerformLayout();
             panel1.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.IndentionNumeric)).EndInit();
+            this.groupBoxNatives.ResumeLayout(false);
             this.groupBox6.ResumeLayout(false);
             this.groupBox6.PerformLayout();
             this.groupBox4.ResumeLayout(false);
@@ -425,6 +501,15 @@
 		private System.Windows.Forms.Button NewArrayType;
 		private System.Windows.Forms.RichTextBox BracketPreview;
 		private System.Windows.Forms.ToolTip toolTip1;
+        private System.Windows.Forms.GroupBox groupBoxNatives;
+		private System.Windows.Forms.ListView NativesListView;
+		private System.Windows.Forms.ColumnHeader columnHeaderName;
+		private System.Windows.Forms.ColumnHeader columnHeaderToken;
+		private System.Windows.Forms.ColumnHeader columnHeaderType;
+		private System.Windows.Forms.ColumnHeader columnHeaderPrecedence;
+        private System.Windows.Forms.Button ButtonAddNative;
+        private System.Windows.Forms.Button ButtonRemoveNative;
+        private System.Windows.Forms.Button ButtonSaveNatives;
 
-	}
+    }
 }

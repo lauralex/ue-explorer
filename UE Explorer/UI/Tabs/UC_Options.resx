@@ -448,7 +448,7 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;groupBox3.ZOrder" xml:space="preserve">
-    <value>2</value>
+    <value>3</value>
   </data>
   <metadata name="label6.GenerateMember" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
     <value>False</value>
@@ -475,6 +475,132 @@
     <value>groupBox4</value>
   </data>
   <data name="&gt;&gt;label6.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="ButtonAddNative.Location" type="System.Drawing.Point, System.Drawing">
+    <value>318, 77</value>
+  </data>
+  <data name="ButtonAddNative.Size" type="System.Drawing.Size, System.Drawing">
+    <value>75, 23</value>
+  </data>
+  <data name="ButtonAddNative.TabIndex" type="System.Int32, mscorlib">
+    <value>3</value>
+  </data>
+  <data name="ButtonAddNative.Text" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="&gt;&gt;ButtonAddNative.Name" xml:space="preserve">
+    <value>ButtonAddNative</value>
+  </data>
+  <data name="&gt;&gt;ButtonAddNative.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;ButtonAddNative.Parent" xml:space="preserve">
+    <value>groupBoxNatives</value>
+  </data>
+  <data name="&gt;&gt;ButtonAddNative.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="ButtonRemoveNative.Location" type="System.Drawing.Point, System.Drawing">
+    <value>318, 48</value>
+  </data>
+  <data name="ButtonRemoveNative.Size" type="System.Drawing.Size, System.Drawing">
+    <value>75, 23</value>
+  </data>
+  <data name="ButtonRemoveNative.TabIndex" type="System.Int32, mscorlib">
+    <value>2</value>
+  </data>
+  <data name="ButtonRemoveNative.Text" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="&gt;&gt;ButtonRemoveNative.Name" xml:space="preserve">
+    <value>ButtonRemoveNative</value>
+  </data>
+  <data name="&gt;&gt;ButtonRemoveNative.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;ButtonRemoveNative.Parent" xml:space="preserve">
+    <value>groupBoxNatives</value>
+  </data>
+  <data name="&gt;&gt;ButtonRemoveNative.ZOrder" xml:space="preserve">
+    <value>2</value>
+  </data>
+  <data name="ButtonSaveNatives.Location" type="System.Drawing.Point, System.Drawing">
+    <value>318, 19</value>
+  </data>
+  <data name="ButtonSaveNatives.Size" type="System.Drawing.Size, System.Drawing">
+    <value>75, 23</value>
+  </data>
+  <data name="ButtonSaveNatives.TabIndex" type="System.Int32, mscorlib">
+    <value>1</value>
+  </data>
+  <data name="ButtonSaveNatives.Text" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="&gt;&gt;ButtonSaveNatives.Name" xml:space="preserve">
+    <value>ButtonSaveNatives</value>
+  </data>
+  <data name="&gt;&gt;ButtonSaveNatives.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;ButtonSaveNatives.Parent" xml:space="preserve">
+    <value>groupBoxNatives</value>
+  </data>
+  <data name="&gt;&gt;ButtonSaveNatives.ZOrder" xml:space="preserve">
+    <value>3</value>
+  </data>
+  <data name="columnHeaderName.Text" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="columnHeaderToken.Text" xml:space="preserve">
+    <value>Token</value>
+  </data>
+  <data name="columnHeaderType.Text" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="columnHeaderPrecedence.Text" xml:space="preserve">
+    <value>Precedence</value>
+  </data>
+  <data name="NativesListView.Location" type="System.Drawing.Point, System.Drawing">
+    <value>6, 9</value>
+  </data>
+  <data name="NativesListView.Size" type="System.Drawing.Size, System.Drawing">
+    <value>297, 132</value>
+  </data>
+  <data name="NativesListView.TabIndex" type="System.Int32, mscorlib">
+    <value>0</value>
+  </data>
+  <data name="&gt;&gt;NativesListView.Name" xml:space="preserve">
+    <value>NativesListView</value>
+  </data>
+  <data name="&gt;&gt;NativesListView.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ListView, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;NativesListView.Parent" xml:space="preserve">
+    <value>groupBoxNatives</value>
+  </data>
+  <data name="&gt;&gt;NativesListView.ZOrder" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="groupBoxNatives.Location" type="System.Drawing.Point, System.Drawing">
+    <value>17, 350</value>
+  </data>
+  <data name="groupBoxNatives.Size" type="System.Drawing.Size, System.Drawing">
+    <value>393, 147</value>
+  </data>
+  <data name="groupBoxNatives.TabIndex" type="System.Int32, mscorlib">
+    <value>0</value>
+  </data>
+  <data name="&gt;&gt;groupBoxNatives.Name" xml:space="preserve">
+    <value>groupBoxNatives</value>
+  </data>
+  <data name="&gt;&gt;groupBoxNatives.Type" xml:space="preserve">
+    <value>System.Windows.Forms.GroupBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;groupBoxNatives.Parent" xml:space="preserve">
+    <value>$this</value>
+  </data>
+  <data name="&gt;&gt;groupBoxNatives.ZOrder" xml:space="preserve">
     <value>0</value>
   </data>
   <data name="VariableTypesTree.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
@@ -721,7 +847,7 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;groupBox4.ZOrder" xml:space="preserve">
-    <value>1</value>
+    <value>2</value>
   </data>
   <data name="groupBox1.AutoSizeMode" type="System.Windows.Forms.AutoSizeMode, System.Windows.Forms">
     <value>GrowAndShrink</value>
@@ -838,7 +964,7 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;groupBox1.ZOrder" xml:space="preserve">
-    <value>3</value>
+    <value>4</value>
   </data>
   <data name="groupBox2.AutoSizeMode" type="System.Windows.Forms.AutoSizeMode, System.Windows.Forms">
     <value>GrowAndShrink</value>
@@ -1039,7 +1165,7 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;groupBox2.ZOrder" xml:space="preserve">
-    <value>4</value>
+    <value>5</value>
   </data>
   <data name="Button_Save.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Top, Right</value>
@@ -1069,7 +1195,7 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;Button_Save.ZOrder" xml:space="preserve">
-    <value>5</value>
+    <value>6</value>
   </data>
   <data name="groupBox5.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Top, Left, Right</value>
@@ -1159,7 +1285,7 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;groupBox5.ZOrder" xml:space="preserve">
-    <value>0</value>
+    <value>1</value>
   </data>
   <metadata name="$this.Localizable" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
     <value>True</value>
@@ -1169,6 +1295,30 @@
   </data>
   <data name="$this.Size" type="System.Drawing.Size, System.Drawing">
     <value>1312, 500</value>
+  </data>
+  <data name="&gt;&gt;columnHeaderName.Name" xml:space="preserve">
+    <value>columnHeaderName</value>
+  </data>
+  <data name="&gt;&gt;columnHeaderName.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ColumnHeader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;columnHeaderToken.Name" xml:space="preserve">
+    <value>columnHeaderToken</value>
+  </data>
+  <data name="&gt;&gt;columnHeaderToken.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ColumnHeader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;columnHeaderType.Name" xml:space="preserve">
+    <value>columnHeaderType</value>
+  </data>
+  <data name="&gt;&gt;columnHeaderType.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ColumnHeader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;columnHeaderPrecedence.Name" xml:space="preserve">
+    <value>columnHeaderPrecedence</value>
+  </data>
+  <data name="&gt;&gt;columnHeaderPrecedence.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ColumnHeader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="&gt;&gt;toolTip1.Name" xml:space="preserve">
     <value>toolTip1</value>
@@ -1180,6 +1330,6 @@
     <value>UC_Options</value>
   </data>
   <data name="&gt;&gt;$this.Type" xml:space="preserve">
-    <value>UEExplorer.UI.Tabs.UserControl_Tab, UEExplorer, Version=1.3.3.0, Culture=neutral, PublicKeyToken=null</value>
+    <value>UEExplorer.UI.Tabs.UserControl_Tab, UEExplorer, Version=1.6.1.0, Culture=neutral, PublicKeyToken=null</value>
   </data>
 </root>

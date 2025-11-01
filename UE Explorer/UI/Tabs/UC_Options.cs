@@ -5,6 +5,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using UEExplorer.Properties;
+using UEExplorer.UI.Dialogs;
 using UELib;
 using UELib.Types;
 
@@ -30,6 +31,15 @@ namespace UEExplorer.UI.Tabs
             }
 
             ComboBox_NativeTable.SelectedIndex = ComboBox_NativeTable.Items.IndexOf(Program.Options.NTLPath);
+
+            // Update the natives list view when a new table is selected.
+            ComboBox_NativeTable.SelectedIndexChanged += ComboBox_NativeTable_OnSelectedIndexChanged;
+
+            // Initial load of the natives list for the default selection.
+            if (ComboBox_NativeTable.SelectedItem != null)
+            {
+                LoadNativesList(ComboBox_NativeTable.SelectedItem.ToString());
+            }
 
             CheckBox_Version.Checked = Program.Options.bForceVersion;
             NumericUpDown_Version.Value = Program.Options.Version;
@@ -248,6 +258,173 @@ namespace UEExplorer.UI.Tabs
         private void CheckBox_LicenseeMode_CheckedChanged(object sender, EventArgs e)
         {
             NumericUpDown_LicenseeMode.Enabled = CheckBox_LicenseeMode.Checked;
+        }
+
+        private void ComboBox_NativeTable_OnSelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (ComboBox_NativeTable.SelectedItem == null)
+            {
+                return;
+            }
+
+            LoadNativesList(ComboBox_NativeTable.SelectedItem.ToString());
+        }
+
+        private void LoadNativesList(string nativeTableName)
+        {
+            NativesListView.Items.Clear();
+            if (string.IsNullOrEmpty(nativeTableName))
+            {
+                return;
+            }
+
+            string nativeTablePath = Path.Combine(Application.StartupPath, "Native Tables",
+                nativeTableName + NativesTablePackage.Extension);
+            if (!File.Exists(nativeTablePath))
+            {
+                return;
+            }
+
+            try
+            {
+                var nativesPackage = new NativesTablePackage();
+                using (var stream = new FileStream(nativeTablePath, FileMode.Open, FileAccess.Read))
+                {
+                    nativesPackage.Deserialize(stream);
+                }
+
+                NativesListView.BeginUpdate();
+                foreach (var nativeItem in nativesPackage.NativeTableList)
+                {
+                    var item = new ListViewItem(nativeItem.Name);
+                    item.SubItems.Add(nativeItem.ByteToken.ToString());
+                    item.SubItems.Add(nativeItem.Type.ToString());
+                    item.SubItems.Add(nativeItem.OperPrecedence.ToString());
+                    NativesListView.Items.Add(item);
+                }
+
+                NativesListView.EndUpdate();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($@"Error loading native table '{nativeTableName}':\r\n{ex.Message}",
+                    @"Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ButtonAddNative_Click(object sender, EventArgs e)
+        {
+            using (var editor = new NativeFunctionEditor())
+            {
+                if (editor.ShowDialog() == DialogResult.OK)
+                {
+                    var nativeItem = editor.NativeItem;
+                    var item = new ListViewItem(nativeItem.Name);
+                    item.SubItems.Add(nativeItem.ByteToken.ToString());
+                    item.SubItems.Add(nativeItem.Type.ToString());
+                    item.SubItems.Add(nativeItem.OperPrecedence.ToString());
+                    NativesListView.Items.Add(item);
+                }
+            }
+        }
+
+        private void ButtonRemoveNative_Click(object sender, EventArgs e)
+        {
+            if (NativesListView.SelectedItems.Count == 0)
+            {
+                MessageBox.Show(@"Please select a native function to remove.", @"No Selection", MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            if (MessageBox.Show(@"Are you sure you want to remove the selected native function?", @"Confirm Deletion",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                foreach (ListViewItem item in NativesListView.SelectedItems)
+                {
+                    NativesListView.Items.Remove(item);
+                }
+            }
+        }
+
+        private void ButtonSaveNatives_Click(object sender, EventArgs e)
+        {
+            if (ComboBox_NativeTable.SelectedItem == null)
+            {
+                MessageBox.Show(@"Cannot save because no native table is selected.", @"Error", MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return;
+            }
+
+            string nativeTableName = ComboBox_NativeTable.SelectedItem.ToString();
+            string nativeTablePath = Path.Combine(Application.StartupPath, "Native Tables",
+                nativeTableName + NativesTablePackage.Extension);
+
+            var package = new NativesTablePackage { NativeTableList = new List<NativeTableItem>() };
+
+            foreach (ListViewItem item in NativesListView.Items)
+            {
+                try
+                {
+                    var nativeItem = new NativeTableItem
+                    {
+                        Name = item.SubItems[0].Text,
+                        ByteToken = int.Parse(item.SubItems[1].Text),
+                        Type = (FunctionType)Enum.Parse(typeof(FunctionType), item.SubItems[2].Text),
+                        OperPrecedence = byte.Parse(item.SubItems[3].Text)
+                    };
+                    package.NativeTableList.Add(nativeItem);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($@"Failed to parse item '{item.Text}':\r\n{ex.Message}", @"Parsing Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+            }
+
+            try
+            {
+                using (var stream = new FileStream(nativeTablePath, FileMode.Create, FileAccess.Write))
+                {
+                    package.Serialize(stream);
+                }
+
+                MessageBox.Show($@"Successfully saved '{nativeTableName}{NativesTablePackage.Extension}'.",
+                    @"Save Successful", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($@"Error saving native table:\r\n{ex.Message}", @"Save Error", MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void NativesListView_DoubleClick(object sender, EventArgs e)
+        {
+            if (NativesListView.SelectedItems.Count == 0)
+                return;
+
+            var selectedItem = NativesListView.SelectedItems[0];
+            var nativeToEdit = new NativeTableItem
+            {
+                Name = selectedItem.SubItems[0].Text,
+                ByteToken = int.Parse(selectedItem.SubItems[1].Text),
+                Type = (FunctionType)Enum.Parse(typeof(FunctionType), selectedItem.SubItems[2].Text),
+                OperPrecedence = byte.Parse(selectedItem.SubItems[3].Text)
+            };
+
+            using (var editor = new NativeFunctionEditor(nativeToEdit))
+            {
+                if (editor.ShowDialog() == DialogResult.OK)
+                {
+                    var updatedItem = editor.NativeItem;
+                    selectedItem.SubItems[0].Text = updatedItem.Name;
+                    selectedItem.SubItems[1].Text = updatedItem.ByteToken.ToString();
+                    selectedItem.SubItems[2].Text = updatedItem.Type.ToString();
+                    selectedItem.SubItems[3].Text = updatedItem.OperPrecedence.ToString();
+                }
+            }
         }
     }
 }
