@@ -1320,7 +1320,16 @@ namespace UEExplorer.UI.Tabs
         {
             for( var i = 0; i + 1 < tokenCount; ++ i )
             {
-                var token = decompiler.NextToken;
+                UStruct.UByteCodeDecompiler.Token token;
+                try
+                {
+                    token = decompiler.NextToken;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    throw;
+                }
                 var firstTokenIndex = decompiler.CurrentTokenIndex;
                 int lastTokenIndex;
                 int subTokensCount;

@@ -18,6 +18,7 @@ namespace UELib.Core
 
                 public override void Deserialize(IUnrealStream stream)
                 {
+                    // Skip one byte
                     stream.ReadByte();
                     Decompiler.AlignSize(sizeof(byte));
 

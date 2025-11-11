@@ -144,6 +144,11 @@ namespace UELib.Core
                 {
                     DelegateName = ReadName(stream);
                 }
+
+                public override string Decompile()
+                {
+                    return DelegateName;
+                }
             }
         }
     }

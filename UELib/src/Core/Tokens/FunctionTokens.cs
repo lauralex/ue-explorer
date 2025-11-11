@@ -81,8 +81,20 @@ namespace UELib.Core
 
                 protected string DecompileOperator(string operatorName)
                 {
+                    string operand1;
+                    do
+                    {
+                        operand1 = PrecedenceToken(NextToken());
+                    } while (string.IsNullOrEmpty(operand1));
+
+                    string operand2;
+                    do
+                    {
+                        operand2 = PrecedenceToken(NextToken());
+                    } while (string.IsNullOrEmpty(operand2));
+
                     var output =
-                        $"{PrecedenceToken(NextToken())} {operatorName} {PrecedenceToken(NextToken())}";
+                        $"{operand1} {operatorName} {operand2}";
                     AssertSkipCurrentToken<EndFunctionParmsToken>();
                     return output;
                 }

@@ -24,7 +24,15 @@ namespace UELib.Core
                 public override string Decompile()
                 {
                     Decompiler._CanAddSemicolon = true;
+
                     string keyExpression = DecompileNext();
+
+                    // DecompileNext until keyExpression is not empty or null
+                    while (string.IsNullOrEmpty(keyExpression))
+                    {
+                        keyExpression = DecompileNext();
+                    }
+
                     string primaryExpression = DecompileNext();
                     return $"{primaryExpression}[{keyExpression}]";
                 }

@@ -56,7 +56,7 @@ namespace UELib.Core
             /// <summary>
             /// The current in memory position relative to the first byte-token.
             /// </summary>
-            private int ScriptPosition { get; set; }
+            public int ScriptPosition { get; private set; }
 
             /// <summary>
             /// Size of FName in memory (int Index, (>= 343) int Number).

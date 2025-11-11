@@ -16,6 +16,8 @@ namespace UELib.Core
 
                 protected UnrealPackage Package => Decompiler._Package;
 
+                protected UStruct Container => Decompiler._Container;
+
                 /// <summary>
                 /// The raw serialized byte-code for this token.
                 ///
