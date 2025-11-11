@@ -2,11 +2,22 @@
   <img src="https://user-images.githubusercontent.com/808593/170878374-0d8902e0-5688-4a71-b39f-b65ae64bf540.png" width="180"
 </p>
 
-# UE Explorer 
+# UE Explorer (Rocket League Edition)
 
-[UE Explorer](https://eliotvu.com/portfolio/view/21/ue-explorer) is an easy-to-use browser and decompiler for Unreal Engine packages (.upk, .u).
+This is a customized version of [UE Explorer](https://eliotvu.com/portfolio/view/21/ue-explorer), an easy-to-use browser and decompiler for Unreal Engine packages (.upk, .u).
+
+This fork is specifically tailored for **Rocket League**, with support for many of the game's custom UE3 tokens and reversed native functions, allowing for deeper and more accurate modding.
   
 ![app](https://user-images.githubusercontent.com/808593/170879806-00b481c0-5f09-4c3b-bb12-56870b8d264f.png)
+
+## Sponsor
+<a href="https://discord.gg/Mhxk8BGUAJ">
+    <img width="80" height="80" alt="NebulaClient" src="https://github.com/user-attachments/assets/60a729a4-067f-411a-9c9c-50fe7578c4a4" />
+</a>
+
+This project is sponsored by the **Nebula Client**, a premier Rocket League mod menu. Join their community for cutting-edge mods and discussions!
+
+*   [**Join the Nebula Client Discord**](https://discord.gg/Mhxk8BGUAJ)
 
 ## Install
 
@@ -17,7 +28,7 @@ You can download and install UE Explorer for **Windows** using one of the follow
 
 ## Features
   
-- UnrealScript decompilation with high accurracy.
+- UnrealScript decompilation with high accuracy, including custom support for Rocket League.
 - Export any UnrealScript classes, or entire package of classes.
 - Export any sound of an Unreal package.
 
@@ -33,13 +44,13 @@ Modding:
 It has support for:
 - Unreal Engine 1
 - Unreal Engine 2, UE2.5
-- Unreal Engine 3
+- Unreal Engine 3 (with custom modifications for Rocket League)
 
 *UE2X and UE4/5 have not been supported as of yet*
 
 However many games may have modified the engine to some extent.
 
-A list of games that have been confirmed to work can be viewed [here](https://github.com/EliotVU/Unreal-Library).
+A list of games that have been confirmed to work with the base version can be viewed [here](https://github.com/EliotVU/Unreal-Library).
 
 ## How to contribute
 
