@@ -15,6 +15,7 @@ public class AlternativeExtendedNativeFunctionToken : UStruct.UByteCodeDecompile
         { 0x52, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
         { 0x65, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
         { 0x53, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
+        { 0x67, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
     };
 
     public override void Deserialize(IUnrealStream stream)

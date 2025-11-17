@@ -58,7 +58,8 @@ namespace UELib.Core
                         { CastToken.RotatorToString, "string" },
                         { CastToken.DelegateToString, "string" },
                         { CastToken.StringToName, "name" },
-                        { CastToken.StrangeStructToString, "string"}
+                        { CastToken.StrangeStructToString, "string"},
+                        { CastToken.StrangeVectorToString, "string" },
                     };
 
                 public void GetFriendlyCastName(out string castTypeName)

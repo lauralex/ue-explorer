@@ -39,7 +39,7 @@ namespace UELib.Branch.UE3.RL
                 { 0x09, typeof(DefaultVariableToken) },
                 { 0x0A, typeof(DelegateCmpEqToken) },
                 { 0x0B, typeof(DynamicArrayElementToken) },
-                { 0x0C, typeof(DelegateFunctionToken) },
+                { 0x0C, typeof(EventSubscribeToken) },
                 { 0x0D, typeof(UnresolvedToken) },
                 { 0x0E, typeof(UnresolvedToken) },
                 { 0x0F, typeof(UnresolvedToken) },
@@ -130,10 +130,10 @@ namespace UELib.Branch.UE3.RL
                 { 0x64, typeof(SwitchToken) },
                 { 0x65, typeof(LetToken) },
                 { 0x66, typeof(SelfToken) },
-                { 0x67, typeof(SkipToken) },
+                { 0x67, typeof(SkipFunctionTokenRL) },
                 { 0x68, typeof(UnresolvedToken) },
                 { 0x69, typeof(DelegateCmpNeToken) },
-                { 0x6A, typeof(UnresolvedToken) },
+                { 0x6A, typeof(EventUnsubscribeToken) },
                 { 0x6B, typeof(UnresolvedToken) },
                 { 0x6C, typeof(BadToken) },
                 { 0x6D, typeof(OutVariableToken) },
@@ -143,6 +143,7 @@ namespace UELib.Branch.UE3.RL
 
                 // Special RL Native tokens
                 { 0x82, typeof(AndTokenRL) },
+                { 0x84, typeof(OrTokenRL) },
             };
 
             return tokenMap;
