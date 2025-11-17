@@ -9,8 +9,11 @@ public class ExtendedNativeFunctionToken : UStruct.UByteCodeDecompiler.Token
     // Build custom extended native function opcode map
     private static readonly TokenMap s_extendedNativeFunctionTokenMap = new()
     {
-        { 0x00, typeof(UStruct.UByteCodeDecompiler.ArrayElementToken) },
+        { 0x00, typeof(DynamicArrayElementTokenRL) },
         { 0x01, typeof(UStruct.UByteCodeDecompiler.DynamicArrayLengthToken) },
+        { 0x0A, typeof(DynamicArrayIteratorRL) },
+        { 0x06, typeof(UStruct.UByteCodeDecompiler.DynamicArrayAddToken) },
+        { 0x24, typeof(FindFirstWithDelegate) },
     };
 
     public override void Deserialize(IUnrealStream stream)
@@ -26,6 +29,7 @@ public class ExtendedNativeFunctionToken : UStruct.UByteCodeDecompiler.Token
         {
             var extendedNativeToken = (UStruct.UByteCodeDecompiler.Token)Activator.CreateInstance(tokenType)!;
             Decompiler.DeserializedTokens.Add(extendedNativeToken);
+            extendedNativeToken.OpCode = opCode;
             extendedNativeToken.Decompiler = Decompiler;
             extendedNativeToken.Position = scriptPosition;
             extendedNativeToken.StoragePosition = (int)(stream.Position - Container.ScriptOffset - 1);

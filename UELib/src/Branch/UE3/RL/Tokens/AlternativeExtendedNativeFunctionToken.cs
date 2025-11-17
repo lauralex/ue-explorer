@@ -11,6 +11,10 @@ public class AlternativeExtendedNativeFunctionToken : UStruct.UByteCodeDecompile
     {
         { 0x3A, typeof(StepToken) },
         { 0x3D, typeof(StepToken) },
+        { 0x57, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
+        { 0x52, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
+        { 0x65, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
+        { 0x53, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
     };
 
     public override void Deserialize(IUnrealStream stream)
@@ -26,6 +30,7 @@ public class AlternativeExtendedNativeFunctionToken : UStruct.UByteCodeDecompile
         {
             var extendedNativeToken = (UStruct.UByteCodeDecompiler.Token)Activator.CreateInstance(tokenType)!;
             Decompiler.DeserializedTokens.Add(extendedNativeToken);
+            extendedNativeToken.OpCode = opCode;
             extendedNativeToken.Decompiler = Decompiler;
             extendedNativeToken.Position = scriptPosition;
             extendedNativeToken.StoragePosition = (int)(stream.Position - Container.ScriptOffset - 1);

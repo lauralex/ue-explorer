@@ -140,6 +140,9 @@ namespace UELib.Branch.UE3.RL
                 // Prob LetDelegate
                 { 0x6E, typeof(UnresolvedToken) },
                 { 0x6F, typeof(ConditionalToken) },
+
+                // Special RL Native tokens
+                { 0x82, typeof(AndTokenRL) },
             };
 
             return tokenMap;

@@ -60,6 +60,13 @@ namespace UELib.Core.Tokens
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public NativeFunctionToken CreateNativeToken(ushort nativeIndex)
         {
+            if (TokenMap.TryGetValue((byte)nativeIndex, out var type))
+            {
+                var token = (NativeFunctionToken)Activator.CreateInstance(type);
+                token.OpCode = (byte)nativeIndex;
+                return token;
+            }
+
             if (NativeTokenMap.TryGetValue(nativeIndex, out var item))
             {
                 return new NativeFunctionToken

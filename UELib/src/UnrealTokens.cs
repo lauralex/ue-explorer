@@ -534,6 +534,7 @@
         #region UE3
         DelegateToString        = 0x5A,
         StringToName            = 0x60,
+        StrangeStructToString   = 0x65,
         #endregion
     }
 

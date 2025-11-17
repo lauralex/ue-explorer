@@ -616,6 +616,11 @@ namespace UELib.Core
                     base.Deserialize(stream);
                 }
 
+                protected void DeserializeBase(IUnrealStream stream)
+                {
+                    base.Deserialize(stream);
+                }
+
                 public override string Decompile()
                 {
                     Decompiler._Nester.AddNest(NestManager.Nest.NestType.ForEach, Position, CodeOffset, this);
