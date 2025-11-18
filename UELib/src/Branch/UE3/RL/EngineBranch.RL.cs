@@ -51,7 +51,7 @@ namespace UELib.Branch.UE3.RL
                 { 0x15, typeof(InterfaceContextToken) },
                 { 0x16, typeof(JumpIfNotToken) },
                 { 0x17, typeof(DelegatePropertyToken) },
-                { 0x18, typeof(BadToken) },
+                { 0x18, typeof(ConditionalToken) },
                 { 0x19, typeof(InterfaceCastToken) },
                 { 0x1A, typeof(InstanceVariableToken) },
                 { 0x1B, typeof(MetaClassCastToken) },
