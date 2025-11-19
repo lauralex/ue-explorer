@@ -14,6 +14,7 @@ public class ExtendedNativeFunctionToken : UStruct.UByteCodeDecompiler.Token
         { 0x0A, typeof(DynamicArrayIteratorRL) },
         { 0x06, typeof(UStruct.UByteCodeDecompiler.DynamicArrayAddToken) },
         { 0x24, typeof(FindFirstWithDelegate) },
+        { 0x2C, typeof(DynArrayEqualToken) },
     };
 
     public override void Deserialize(IUnrealStream stream)
