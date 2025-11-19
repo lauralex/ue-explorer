@@ -65,7 +65,7 @@ namespace UELib.Branch.UE3.RL
                 { 0x23, typeof(NewToken) },
                 { 0x24, typeof(UnresolvedToken) },
                 { 0x25, typeof(FalseToken) },
-                { 0x26, typeof(UnresolvedToken) },
+                { 0x26, typeof(EndParmValueToken) },
                 { 0x27, typeof(ByteConstToken) },
                 { 0x28, typeof(BadToken) },
                 { 0x29, typeof(DynamicArraySortToken) },
