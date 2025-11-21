@@ -203,6 +203,11 @@ namespace UELib.Core
                     DeserializeOneParamMethodWithSkip(stream, (uint)PackageObjectLegacyVersion.SkipSizeAddedToArrayFindTokenIntrinsics);
                 }
 
+                protected void DeserializeDebugToken()
+                {
+                    Decompiler.DeserializeDebugToken();
+                }
+
                 public override string Decompile()
                 {
                     return DecompileTwoParamMethod("Find");

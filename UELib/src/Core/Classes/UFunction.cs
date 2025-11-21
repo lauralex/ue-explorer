@@ -106,6 +106,7 @@ namespace UELib.Core
             }
 #endif
             _Buffer.Read(out FunctionFlags);
+            FunctionFlags = new UnrealFlags<FunctionFlag>(FunctionFlags, _Buffer.Package.Branch.EnumFlagsMap[typeof(FunctionFlag)]);
 #if ROCKETLEAGUE
             // Disassembled code shows two calls to ByteOrderSerialize, might be a different variable not sure.
             if (_Buffer.Package.Build == UnrealPackage.GameBuild.BuildName.RocketLeague &&
@@ -113,7 +114,7 @@ namespace UELib.Core
             {
                 // HO:0x04 = Constructor
                 uint v134 = _Buffer.ReadUInt32();
-                FunctionFlags = new UnrealFlags<FunctionFlag>(FunctionFlags | (ulong)v134 << 32);
+                FunctionFlags = new UnrealFlags<FunctionFlag>(FunctionFlags | (ulong)v134 << 32, _Buffer.Package.Branch.EnumFlagsMap[typeof(FunctionFlag)]);
             }
 #endif
 #if SA2
