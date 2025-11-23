@@ -61,6 +61,11 @@ namespace UELib.Core
 
             public abstract class DynamicArrayMethodToken : Token
             {
+                protected void DeserializeDebugToken()
+                {
+                    Decompiler.DeserializeDebugToken();
+                }
+
                 protected void DeserializeOneParamMethodWithSkip(IUnrealStream stream, uint skipSizeVersion = (uint)PackageObjectLegacyVersion.SkipSizeAddedToArrayTokenIntrinsics)
                 {
                     // Array
@@ -201,11 +206,6 @@ namespace UELib.Core
                 public override void Deserialize(IUnrealStream stream)
                 {
                     DeserializeOneParamMethodWithSkip(stream, (uint)PackageObjectLegacyVersion.SkipSizeAddedToArrayFindTokenIntrinsics);
-                }
-
-                protected void DeserializeDebugToken()
-                {
-                    Decompiler.DeserializeDebugToken();
                 }
 
                 public override string Decompile()
