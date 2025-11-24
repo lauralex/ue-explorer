@@ -17,6 +17,7 @@ public class AlternativeExtendedNativeFunctionToken : UStruct.UByteCodeDecompile
         { 0x55, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
         { 0x56, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
         { 0x57, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
+        { 0x60, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
         { 0x65, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
         { 0x67, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
     };
