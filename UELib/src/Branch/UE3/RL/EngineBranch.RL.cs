@@ -59,7 +59,7 @@ namespace UELib.Branch.UE3.RL
                 { 0x1D, typeof(UnresolvedToken) },
                 { 0x1E, typeof(NothingToken) },
                 { 0x1F, typeof(LetBoolToken) },
-                { 0x20, typeof(UnresolvedToken) },
+                { 0x20, typeof(ReturnToken) },
                 { 0x21, typeof(UnresolvedToken) },
                 { 0x22, typeof(DelegateFunctionToken) },
                 { 0x23, typeof(NewToken) },
