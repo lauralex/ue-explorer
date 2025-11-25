@@ -9,6 +9,7 @@ public class AlternativeExtendedNativeFunctionToken : UStruct.UByteCodeDecompile
     // Build custom extended native function opcode map
     private static readonly TokenMap s_extendedNativeFunctionTokenMap = new()
     {
+        { 0x36, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },
         { 0x3A, typeof(StepToken) },
         { 0x3D, typeof(StepToken) },
         { 0x3F, typeof(UStruct.UByteCodeDecompiler.PrimitiveInlineCastToken) },

@@ -20,6 +20,7 @@ public class ExtendedNativeFunctionToken : UStruct.UByteCodeDecompiler.Token
         { 0x22, typeof(DynamicArrayMapTokenRL) },
         { 0x24, typeof(FindFirstWithDelegate) },
         { 0x26, typeof(DynamicArrayAnyTokenRL) },
+        { 0x29, typeof(DynamicArrayFilterTokenRL) },
         { 0x2C, typeof(DynArrayEqualToken) },
         { 0x30, typeof(DynamicArrayFindTypeTokenRL) },
     };
