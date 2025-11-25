@@ -78,7 +78,7 @@ namespace UELib.Branch.UE3.RL
                 { 0x30, typeof(NativeParameterToken) },
                 { 0x31, typeof(InstanceDelegateToken) },
                 { 0x32, typeof(UnresolvedToken) },
-                { 0x33, typeof(AssertToken) },
+                { 0x33, typeof(AssertTokenRL) },
                 { 0x34, typeof(LetDelegateToken) },
                 { 0x35, typeof(UnresolvedToken) },
                 { 0x36, typeof(VectorConstToken) },
