@@ -3,28 +3,12 @@ using UELib.Core;
 using UELib.Core.Tokens;
 
 namespace UELib.Branch.UE3.RL.Tokens;
-
-public class ExtendedNativeFunctionToken : UStruct.UByteCodeDecompiler.Token
+public class ExAlternativeExtendedNativeFunctionTokenRL : UStruct.UByteCodeDecompiler.NativeFunctionToken
 {
     // Build custom extended native function opcode map
     private static readonly TokenMap s_extendedNativeFunctionTokenMap = new()
     {
-        { 0x00, typeof(DynamicArrayElementTokenRL) },
-        { 0x01, typeof(UStruct.UByteCodeDecompiler.DynamicArrayLengthToken) },
-        { 0x04, typeof(DynamicArrayFindContainsTokenRL) },
-        { 0x05, typeof(DynamicArrayFindStructTokenRL) },
-        { 0x06, typeof(UStruct.UByteCodeDecompiler.DynamicArrayAddToken) },
-        { 0x07, typeof(UStruct.UByteCodeDecompiler.DynamicArrayAddItemToken) },
-        { 0x08, typeof(UStruct.UByteCodeDecompiler.DynamicArrayRemoveItemToken) },
-        { 0x0A, typeof(DynamicArrayIteratorRL) },
-        { 0x0D, typeof(DynamicArrayAddUniqueItemTokenRL) },
-        { 0x22, typeof(DynamicArrayMapTokenRL) },
-        { 0x24, typeof(FindFirstWithDelegate) },
-        { 0x26, typeof(DynamicArrayAnyTokenRL) },
-        { 0x29, typeof(DynamicArrayFilterTokenRL) },
-        { 0x2C, typeof(DynArrayEqualToken) },
-        { 0x30, typeof(DynamicArrayFindTypeTokenRL) },
-        { 0x31, typeof(DynamicArrayConcatTokenRL) },
+        
     };
 
     public override void Deserialize(IUnrealStream stream)
@@ -51,7 +35,7 @@ public class ExtendedNativeFunctionToken : UStruct.UByteCodeDecompiler.Token
             return;
         }
 
-        ushort nativeIndex = (ushort)(opCode + 5000);
+        ushort nativeIndex = (ushort)(opCode + 6000);
         var token = tokenFactory.CreateNativeToken(nativeIndex);
 
         Decompiler.DeserializedTokens.Add(token);
@@ -64,6 +48,7 @@ public class ExtendedNativeFunctionToken : UStruct.UByteCodeDecompiler.Token
         token.StorageSize = (short)(stream.Position - Container.ScriptOffset - token.StoragePosition);
         token.PostDeserialized();
     }
+
     public override string Decompile()
     {
         return DecompileNext();

@@ -66,6 +66,11 @@ namespace UELib.Core
                     Decompiler.DeserializeDebugToken();
                 }
 
+                protected void AddSemicolon()
+                {
+                    Decompiler._CanAddSemicolon = true;
+                }
+
                 protected void DeserializeOneParamMethodWithSkip(IUnrealStream stream, uint skipSizeVersion = (uint)PackageObjectLegacyVersion.SkipSizeAddedToArrayTokenIntrinsics)
                 {
                     // Array

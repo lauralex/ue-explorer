@@ -63,6 +63,7 @@ namespace UELib.Core.Tokens
             if (TokenMap.TryGetValue((byte)nativeIndex, out var type))
             {
                 var token = (NativeFunctionToken)Activator.CreateInstance(type);
+                token.NativeItem = new NativeTableItem();
                 token.OpCode = (byte)nativeIndex;
                 return token;
             }

@@ -25,7 +25,7 @@ namespace UELib.Branch.UE3.RL
                 return base.BuildTokenMap(linker);
             }
 
-            var tokenMap = new TokenMap((byte)ExprToken.ExtendedNative)
+            var tokenMap = new TokenMap((byte)ExprToken.ExtendedNative + 0x30)
             {
                 { 0x00, typeof(NothingToken) },
                 { 0x01, typeof(StateVariableToken) },
@@ -142,6 +142,7 @@ namespace UELib.Branch.UE3.RL
                 { 0x6F, typeof(ConditionalToken) },
 
                 // Special RL Native tokens
+                { 0x71, typeof(ExAlternativeExtendedNativeFunctionTokenRL) },
                 { 0x82, typeof(AndTokenRL) },
                 { 0x84, typeof(OrTokenRL) },
             };
@@ -156,7 +157,7 @@ namespace UELib.Branch.UE3.RL
                 tokenMap,
                 TokenFactory.FromPackage(linker.NTLPackage),
                 0x70,
-                0x80);
+                0x70);
         }
     }
 }
