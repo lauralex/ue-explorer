@@ -99,7 +99,7 @@ namespace UELib.Branch.UE3.RL
                 { 0x45, typeof(EndFunctionParmsToken) },
                 { 0x46, typeof(DelegateCmpEqToken) },
                 { 0x47, typeof(StopToken) },
-                { 0x48, typeof(EventUnsubscribeToken) },
+                { 0x48, typeof(EventSubscribeToken) },
                 { 0x49, typeof(FilterEditorOnlyToken) },
                 { 0x4A, typeof(DynamicArrayFindToken) },
                 { 0x4B, typeof(DelegateCmpNeToken) },

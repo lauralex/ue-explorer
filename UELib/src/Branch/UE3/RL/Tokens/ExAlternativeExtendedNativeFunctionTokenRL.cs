@@ -8,7 +8,7 @@ public class ExAlternativeExtendedNativeFunctionTokenRL : UStruct.UByteCodeDecom
     // Build custom extended native function opcode map
     private static readonly TokenMap s_extendedNativeFunctionTokenMap = new()
     {
-        
+        { 0x39, typeof(IteratorTokenRL) },
     };
 
     public override void Deserialize(IUnrealStream stream)

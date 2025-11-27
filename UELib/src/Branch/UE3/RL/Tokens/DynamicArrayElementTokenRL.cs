@@ -6,6 +6,9 @@ public class DynamicArrayElementTokenRL : UStruct.UByteCodeDecompiler.DynamicArr
 {
     public override void Deserialize(IUnrealStream stream)
     {
+        stream.Skip(1);
+        Decompiler.AlignSize(sizeof(byte));
+
         // Key
         while (DeserializeNext() is UStruct.UByteCodeDecompiler.NothingToken)
         {

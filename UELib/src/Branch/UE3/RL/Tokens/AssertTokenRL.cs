@@ -45,8 +45,8 @@ public class AssertTokenRL : UStruct.UByteCodeDecompiler.AssertToken
         {
             debugMsg2 = "\"\"";
         }
+        Decompiler.MarkSemicolon();
 
-        AddSemicolon();
         return
             $"assert({condition}, {debugMsg1}, {debugMsg2})";
     }

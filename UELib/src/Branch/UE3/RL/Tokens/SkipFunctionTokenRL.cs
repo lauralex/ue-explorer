@@ -1,5 +1,4 @@
-﻿using System;
-using UELib.Core;
+﻿using UELib.Core;
 
 namespace UELib.Branch.UE3.RL.Tokens;
 
@@ -11,21 +10,30 @@ public class SkipFunctionTokenRL : UStruct.UByteCodeDecompiler.Token
         {
         }
 
-        if (DeserializeNext() is UStruct.UByteCodeDecompiler.DebugInfoToken)
-        {
-            DeserializeNext();
-        }
+        DeserializeDebugToken();
+
+        DeserializeNext();
     }
 
     public override string Decompile()
     {
-        string output;
-
+        UStruct.UByteCodeDecompiler.Token skip;
+        string output = string.Empty;
         do
         {
-            output = DecompileNext();
-        } while (string.IsNullOrEmpty(output));
+            skip = NextToken();
+            if (skip is not UStruct.UByteCodeDecompiler.EndFunctionParmsToken)
+            {
+                output += $"\r\n{UDecompilingState.Tabs}{skip.Decompile()};";
+            }
+        } while (skip is not UStruct.UByteCodeDecompiler.EndFunctionParmsToken);
 
-        return output;
+        // Remove last comma from output
+        if (output.EndsWith(";"))
+        {
+            output = output.Substring(0, output.Length - 1);
+        }
+
+        return $"{DecompileNext()};{output}";
     }
 }

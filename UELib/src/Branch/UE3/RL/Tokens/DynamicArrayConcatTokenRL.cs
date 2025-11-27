@@ -40,7 +40,7 @@ public class DynamicArrayConcatTokenRL : UStruct.UByteCodeDecompiler.DynamicArra
 
     public override string Decompile()
     {
-        AddSemicolon();
+        Decompiler.MarkSemicolon();
         string context = DecompileNext();
         string param1 = DecompileNext();
         

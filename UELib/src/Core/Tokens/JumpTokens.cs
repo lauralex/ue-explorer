@@ -576,6 +576,16 @@ namespace UELib.Core
             [ExprToken(ExprToken.Iterator)]
             public class IteratorToken : JumpToken
             {
+                protected void AddNest()
+                {
+                    Decompiler._Nester.AddNest(NestManager.Nest.NestType.ForEach, Position, CodeOffset, this);
+                }
+
+                protected void RemoveSemicolon()
+                {
+                    Decompiler._CanAddSemicolon = false;
+                }
+
                 public override void Deserialize(IUnrealStream stream)
                 {
                     DeserializeNext(); // Expression

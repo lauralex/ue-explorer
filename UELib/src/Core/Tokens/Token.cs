@@ -82,6 +82,12 @@ namespace UELib.Core
                     ++Decompiler.CurrentTokenIndex;
                 }
 
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                protected void DeserializeDebugToken()
+                {
+                    Decompiler.DeserializeDebugToken();
+                }
+
                 /// <summary>
                 /// Asserts that the token that we want to skip is indeed of the correct type, this also skips past any <see cref="DebugInfoToken"/>.
                 /// </summary>

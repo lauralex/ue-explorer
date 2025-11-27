@@ -63,11 +63,6 @@ namespace UELib.Core
                     DeserializeNext();
                 }
 
-                protected void AddSemicolon()
-                {
-                    Decompiler._CanAddSemicolon = true;
-                }
-
                 public override string Decompile()
                 {
                     if (IsDebug.HasValue)
