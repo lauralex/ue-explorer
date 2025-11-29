@@ -14,7 +14,7 @@ public class DynamicArrayElementTokenRL : UStruct.UByteCodeDecompiler.DynamicArr
         {
         }
 
-        // Value
+        // Array
         DeserializeNext();
     }
 }
