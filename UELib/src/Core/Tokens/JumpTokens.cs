@@ -449,6 +449,9 @@ namespace UELib.Core
                         }
                     }
 
+                    // Initialize Nester if null
+                    Decompiler._Nester ??= new NestManager { Decompiler = Decompiler };
+
                     Decompiler._Nester.AddNest(IsLoop
                             ? NestManager.Nest.NestType.Loop
                             : NestManager.Nest.NestType.If,
