@@ -336,6 +336,11 @@ namespace UELib.Core
             {
                 public bool IsLoop;
 
+                protected void RemoveSemicolon()
+                {
+                    Decompiler._CanAddSemicolon = false;
+                }
+
                 public override void PostDeserialized()
                 {
                     base.PostDeserialized();

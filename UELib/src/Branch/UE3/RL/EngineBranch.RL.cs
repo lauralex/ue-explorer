@@ -83,7 +83,7 @@ namespace UELib.Branch.UE3.RL
                 { 0x35, typeof(UnresolvedToken) },
                 { 0x36, typeof(VectorConstToken) },
                 { 0x37, typeof(FloatConstToken) },
-                { 0x38, typeof(FinalFunctionToken) },
+                { 0x38, typeof(FinalFunctionTokenRL) },
                 { 0x39, typeof(GlobalFunctionToken) },
                 { 0x3A, typeof(UnresolvedToken) },
                 { 0x3B, typeof(ObjectConstToken) },
