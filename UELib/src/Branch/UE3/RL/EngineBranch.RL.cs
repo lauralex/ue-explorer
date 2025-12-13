@@ -135,7 +135,7 @@ namespace UELib.Branch.UE3.RL
                 { 0x69, typeof(DelegateCmpNeToken) },
                 { 0x6A, typeof(EventUnsubscribeToken) },
                 { 0x6B, typeof(UnresolvedToken) },
-                { 0x6C, typeof(BadToken) },
+                { 0x6C, typeof(ContextInitTokenRL) },
                 { 0x6D, typeof(OutVariableToken) },
                 // Prob LetDelegate
                 { 0x6E, typeof(UnresolvedToken) },

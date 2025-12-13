@@ -20,7 +20,7 @@ public class FinalFunctionTokenRL : UStruct.UByteCodeDecompiler.FinalFunctionTok
 
         // Additional deserialization logic for RL can be added here
 
-        if (FunctionTokenMap.TryGetValue(Function.Name, out Type tokenType))
+        if (FunctionTokenMap.TryGetValue(Function.Name, out var tokenType))
         {
             // Instantiate and use the specific token type as needed
             var tokenInstance = (UStruct.UByteCodeDecompiler.Token)Activator.CreateInstance(tokenType)!;
@@ -42,7 +42,7 @@ public class FinalFunctionTokenRL : UStruct.UByteCodeDecompiler.FinalFunctionTok
     {
         string output = base.Decompile();
 
-        if (FunctionTokenMap.TryGetValue(Function.Name, out Type tokenType))
+        if (FunctionTokenMap.TryGetValue(Function.Name, out var tokenType))
         {
             if (tokenType == typeof(AllControllersJumpTokenRL))
             {
