@@ -9,6 +9,11 @@ public class IteratorTokenRL : UStruct.UByteCodeDecompiler.IteratorToken
         DeserializeNext(); // Var
         DeserializeNext(); // [InterfaceClass]
         base.Deserialize(stream);
+
+        // Deserialize until there's IteratorPopToken
+        while (DeserializeNext() is not UStruct.UByteCodeDecompiler.IteratorPopToken)
+        {
+        }
     }
 
     public override string Decompile()
@@ -22,7 +27,21 @@ public class IteratorTokenRL : UStruct.UByteCodeDecompiler.IteratorToken
 
         string var = DecompileNext();
         string optionalInterfaceClass = DecompileNext();
+        DecompileNext();
 
-        return string.IsNullOrEmpty(optionalInterfaceClass) || optionalInterfaceClass == "," ? $"foreach AllObjects({expression}, {var})" : $"foreach AllObjects({expression}, {var}, {optionalInterfaceClass})";
+        string appendBody = string.Empty;
+
+        UStruct.UByteCodeDecompiler.Token token;
+        do
+        {
+            token = Decompiler.NextToken;
+            if (token is UStruct.UByteCodeDecompiler.DebugInfoToken) continue;
+            appendBody += token.Decompile();
+        } while (token is not UStruct.UByteCodeDecompiler.IteratorPopToken);
+
+        string finalBody = string.IsNullOrEmpty(optionalInterfaceClass) || optionalInterfaceClass == "," ? $"foreach AllObjects({expression}, {var})" : $"foreach AllObjects({expression}, {var}, {optionalInterfaceClass})";
+
+
+        return finalBody + "\r\n" + appendBody;
     }
 }
