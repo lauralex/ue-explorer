@@ -226,3 +226,128 @@ evidence the inferred semantics is real and not a coincidence.
 - `Tokens/ExtendedNativeFunctionToken.cs` — sub-dispatch for the `0x10` extended-native prefix
 - `Tokens/AlternativeExtendedNativeFunctionToken.cs` — sub-dispatch for `0x5E`
 - `Tokens/FinalFunctionTokenRL.cs` — wraps base `FinalFunctionToken`, used by `0x38` today
+
+---
+
+## Update — what shipped after the initial analysis
+
+After writing this doc, several rounds of MCP-restart-verify cycles validated the
+hypotheses and added defensive infrastructure. Summary of the commits on `rl-custom`:
+
+1. **`7d865bc`** — added the experimental token-map entries:
+   - `{ 0x0F, typeof(FinalFunctionTokenRL) }` (super-call shape)
+   - `{ 0x1D, typeof(BoolVariableToken) }` (1-sub-token wrapper)
+   - **Verified working**: `Pawn.PostBeginPlay` now decompiles `super.PostBeginPlay(0); break;`
+     as the first real source output. `Volume.PostBeginPlay` parses through with `0x1D`
+     correctly wrapping inner extended-native calls.
+
+2. **`83692cb`** — defensive try/catch in `FinalFunctionTokenRL`, `AndTokenRL`, `OrTokenRL`:
+   - `FinalFunctionTokenRL.Deserialize` catches `ArgumentOutOfRangeException` /
+     `InvalidCastException` from the `Imports[]` lookup and continues with `Function = null`.
+     Decompile emits `"/* unresolved final function */(args)"` instead of NRE-cascading.
+   - `AndTokenRL` / `OrTokenRL` wrap their inner reads similarly.
+
+3. **`b3282ac`** — central deserialize loop recovers from per-token exceptions:
+   - `ByteCodeDecompiler.Deserialize`'s `catch (Exception)` branch now re-syncs
+     `ScriptPosition` to the buffer cursor and continues instead of `break`-ing.
+   - **This was the breakthrough**: previously one throwing token aborted parsing of
+     the entire function. Now parsing continues best-effort. `Pawn.PostBeginPlay` went
+     from "stops at position 14" to "parses all 114 bytes including nested extended natives".
+
+4. **`f738d57`** — `DecompileNests` guard against `CurrentTokenIndex` past the list end:
+   - Eliminates the "Failed to format nests!" stack-trace dump that was appearing in
+     decompiled source after the loop recovery walked the cursor past the token list.
+
+5. **`3c3493d` / `f9cb3b2`** — bounds-check NextToken / DecompileNext / DecompileParms /
+   DecompileOperator. Initial attempt to clamp `NextToken` at the last index caused
+   infinite loops in callers like `do { t = NextToken(); } while (t is not Foo);` —
+   reverted. Final state: `DecompileNext` returns `string.Empty` when the cursor is at
+   the end (safe — string concat continues); the explicit bounds-checks in
+   `DecompileParms` / `DecompileOperator` use `/* truncated */` placeholders;
+   `NextToken` itself still throws (the central loop's try/catch handles it).
+
+6. **`5091abd`** — `NativeFunctionToken.Decompile` falls back to
+   `"/* unresolved native 0xNN */(args)"` when `NativeItem` is null (NTL drift).
+
+## Current state (after these changes)
+
+**Decompile output now produces real UnrealScript source for the first time.** Examples
+from `absolutelynewupks/Engine_decrypted.upk`:
+
+```
+event PostBeginPlay()       // Pawn
+{
+    super.PostBeginPlay(0);
+    break;
+    /* Statement decompilation error: ... */
+    // UnresolvedToken (0x21)
+    /*@Error*/;
+    { }
+}
+```
+
+```
+simulated event PostBeginPlay()    // PlayerController
+{
+    // UnresolvedToken (0x2B)
+    /* unresolved final function */(0, ., break__NFUN_181__(__NFUN_115__(,, self,
+        /* unresolved final function */(...)), ...));
+}
+```
+
+The structure is real, calls are nested correctly. The garbage in the output is from
+two known sources, both out-of-scope for token-map work:
+- **`__NFUN_NNN__` placeholders** — NTL drift; native function indices in the new
+  build don't resolve in the loaded `.NTL` file. Fix: regenerate the NTL via
+  `Eliot.Extensions.NTLGenerator` or a dump-and-import flow against the current
+  binary.
+- **`UnresolvedToken (0xNN)` markers** — ~14 lower-frequency primary opcodes whose
+  shape is still unknown. See "Remaining gaps" below.
+
+## Remaining gaps in the primary token map
+
+After applying the 0x0F / 0x1D mappings, these primary bytes still appear in real
+bytecode and trigger parse desync (each byte's Decompile throws `/*@Error*/` which
+propagates through the parent expression):
+
+| Byte | Hex | Survey count | Where seen |
+|------|------|------|------|
+| 0x08 | 8 | 9× | Actor.PostBeginPlay, Pawn.* |
+| 0x0D | 13 | 2× | Camera.PostBeginPlay |
+| 0x21 | 33 | 3× | Pawn.PostBeginPlay (real position, not tail padding) |
+| 0x2B | 43 | 5× | Controller.PostBeginPlay, PlayerController.* |
+| 0x2C | 44 | 1× | GFxData_PRI_TA.SetPRI |
+| 0x32 | 50 | 1× | PlayerController.EnterStartState |
+| 0x3D | 61 | 1× | GameInfo.Logout |
+| 0x3F | 63 | 1× | GameInfo.PostBeginPlay |
+| 0x43 | 67 | 3× | Camera.PostBeginPlay |
+| 0x50 | 80 | 6× | Camera.PostBeginPlay (multiple positions) |
+| 0x54 | 84 | 2× | Camera.PostBeginPlay (multiple positions) |
+| 0x5A | 90 | 1× | Pawn.Destroyed |
+| 0x68 | 104 | 1× | Tail padding only — likely safe to leave unresolved |
+| 0x6B | 107 | 7× | Pawn.Destroyed, Pawn.FellOutOfWorld |
+| 0x6E | 110 | 2× | GFxData_PRI_TA.SetPRI |
+
+Plus the `0x45 = EndFunctionParmsToken` map entry that never appears in the new
+survey (5× total occurrences, none as terminator) — likely a vestige from a wrong
+older theory; should be `BadToken` or marked `UnresolvedToken` until shape is known.
+
+For each of these, the next investigative step is: pick 2-3 functions where the
+byte appears, hex-dump the bytes around it via the disassembled token positions,
+and compare to baseline `EX_` shapes from `ScriptSerialization.h`. Since central-loop
+recovery is now in place, a wrong guess only corrupts that one token's child
+expressions instead of breaking the entire function — much lower-risk experimentation.
+
+## What's NOT yet done
+
+- **Case-0x19 sub-switch decoding** in `sub_7FF6CD38C840` (the IDA function that turned
+  out to be `FScriptSerializer`, not the on-disk walker). Its byte values don't directly
+  translate to on-disk bytes, but its case shapes are still useful corroboration once
+  shape inference for the listed gaps is done. Deferred.
+- **NTL regeneration for the current build.** Separate workstream — needs the
+  `Eliot.Extensions.NTLGenerator` plugin to be re-pointed at the current binary's
+  native table dump.
+- **`IteratorPopToken` / NestManager state** — when the cursor walks past expected
+  nest closes (because earlier tokens failed and didn't push their nest), the manager
+  emits orphan `{ }` blocks. Decompile-side bookkeeping fix; lower priority than the
+  token-map gaps.
