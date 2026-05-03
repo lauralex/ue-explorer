@@ -245,7 +245,16 @@ namespace UELib.Branch.UE3.RL
                 // suggests this is the boolean variant **EX_LetBool** (no NULL check needed
                 // since bool storage is always backed). Was wrongly DelegateCmpEq.
                 { 0x46, typeof(LetBoolToken) },
-                { 0x47, typeof(StopToken) },
+                // 0x47: VERIFIED EmptyParmValue (skipped optional argument, NOT Stop).
+                // Empirically appears 6 times in a row inside `Spawn(ControllerClass, ?, ?, ?,
+                // ?, ?, ?)` — that's the 6 optional arguments of Spawn (Owner, Tag, Location,
+                // Rotation, RemoveCollisionFromAdjacent, ...). Each is an EX_EmptyParmValue
+                // marker. Was wrongly StopToken (which renders as `stop` and only makes sense
+                // in state-code context, never as a function-call argument).
+                // Runtime handler at sub_7FF6CD2F0360 sets a state flag — could plausibly be
+                // either Stop or EmptyParm at runtime, but the contextual usage (always as
+                // call args) confirms EmptyParm.
+                { 0x47, typeof(EmptyParmToken) },
                 { 0x48, typeof(EventSubscribeToken) },
                 // 0x49: VERIFIED Let-shape (reads 2 sub-opcodes, like EX_Let / LetBool / LetDelegate).
                 // GNatives[0x49] = sub_7FF6CD2F0C60: dispatches sub-opcode A, captures result via
