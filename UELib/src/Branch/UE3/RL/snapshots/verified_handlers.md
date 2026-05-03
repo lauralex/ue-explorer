@@ -8,6 +8,13 @@ unique-string fingerprints, byte-read patterns, and structural fingerprints.
 
 - **GNatives base**: `funcs_7FF6CD28592F = 0x7FF6CF2AA580`
 - **Default error handler**: `sub_7FF6CD31ACB0` ("Unknown code token %02X") — appears at 28 entries: 0x00, 0x02, 0x03, 0x04, 0x08, 0x0A, 0x0D, 0x14, 0x18, 0x24, 0x26, 0x34, 0x35, 0x3C, 0x3D, 0x3F, 0x42, 0x44, 0x45, 0x4B, 0x4E, 0x4F, 0x5F, 0x67, 0x68, 0x6D, 0x6E, 0x6F
+- **Alias handlers** (multiple bytes share one handler, runtime-equivalent leaves):
+  - `0x1D, 0x2E` → `sub_7FF6CD21D420` (3-byte empty stub) = EX_Nothing
+  - `0x05, 0x16` → `sub_7FF6CD2F6800` (736 bytes) = EX_ArrayElement / EX_DynArrayElement
+  - `0x1B, 0x54` → `sub_7FF6CD2F6AE0` (736 bytes) — 2 bytes share this large handler (TBD)
+  - `0x39, 0x3B, 0x43, 0x5A` → `sub_7FF6CD2F6FA0` (19 bytes) = 8-byte qword leaf (NameConst-shape)
+  - `0x1C, 0x27` → `sub_7FF6CD2F7030` (8 bytes) = EX_IntZero / EX_False
+  - `0x2F, 0x3A` → `sub_7FF6CD2F7040` (8 bytes) = EX_IntOne / EX_True
 - **Property-setup helper**: `sub_7FF6CD317F00` (FFrame::ReadVariableSize equivalent — reads UField* + property-type byte = 9 bytes)
 
 ## VERIFIED — applied to EngineBranchRL.BuildTokenMap
@@ -79,22 +86,36 @@ unique-string fingerprints, byte-read patterns, and structural fingerprints.
 | 0x6B  | sub_7FF6CD2F7340 (32)        | EX_PrimitiveCast      | Reads byte, dispatches into sub-table `funcs_7FF6CD2F735D` (cast-type sub-table). |
 | 0x6C  | sub_7FF6CD2F0210 (116)       | EX_ReturnNothing      | Unique error `"Control reached the end of non-void function"`. |
 
-### Investigation candidates (mapping unverified or "possibly wrong")
+### Newly verified (this session)
+
+| Byte  | Handler                      | EX_ name              | Evidence |
+|-------|------------------------------|-----------------------|----------|
+| 0x09  | sub_7FF6CD2F5930 (146)       | EX_LetBool/Let-shape (RL variant) | Optional 0x20 debug-info prefix + 2 sub-exprs (no UProperty* read). Same shape as 0x46 (LetBool) but with debug-info prefix support. Was wrongly DefaultVariable (which reads 8-byte UProperty* — over-consumed). Mapped to LetToken. |
+| 0x43  | sub_7FF6CD2F6FA0 (19)        | 8-byte qword leaf (NameConst-shape) | Aliased with 0x39, 0x3B, 0x5A. Was wrongly DebugInfoToken (13-byte payload). |
+| 0x53  | sub_7FF6CD2F6240 (414)       | EX_StructCmpEq        | 8-byte UStruct* + 2 sub-exprs + struct comparison via sub_7FF6CD658AC0 (4th arg = 0 → EQ). Was wrongly LocalVariable. |
+| 0x4D  | sub_7FF6CD2F5B80 (217)       | EX_StructConst-like   | 8-byte UStruct* + 1 sub-expr; allocates struct buffer of `struct.PropertiesSize` and copies via vtable[98]. Mapped to new RL token `StructValueTokenRL`. |
+| 0x69  | sub_7FF6CD2F0290 (194)       | EX_IteratorPop        | 1-byte leaf with unique runtime error "Unexpected iterator pop command at %s:%04X". Was wrongly DelegateCmpNe. |
+| 0x68  | sub_7FF6CD31ACB0             | UNMAPPED (default-error) | Was wrongly NameConst — over-consumed 8 bytes per occurrence. Now NothingToken (1-byte safe). |
+| 0x6E  | sub_7FF6CD31ACB0             | UNMAPPED (default-error) | Same fix as 0x68. |
+| 0x6F  | sub_7FF6CD31ACB0             | UNMAPPED (default-error) | Was wrongly Conditional (3 sub-exprs + 4 bytes — way over-consumed). Now NothingToken. |
+| 0x03  | sub_7FF6CD31ACB0             | UNMAPPED (default-error) | Was wrongly StructCmpEq (8 bytes UObject* + 2 sub-exprs). Now NothingToken. Real StructCmpEq is at 0x53. |
+| 0x4E  | sub_7FF6CD31ACB0             | UNMAPPED (default-error) | Was wrongly StructCmpNe. Now NothingToken. |
+
+### Investigation candidates (mapping still uncertain)
 
 | Byte  | Handler                      | Notes                    |
 |-------|------------------------------|--------------------------|
 | 0x05  | sub_7FF6CD2F6800 (736, shared with 0x16) | 2-sub-op + byte + dispatch. Mapped to ArrayElement currently but the real ArrayElement is now at 0x1E. May be an unused alternate or a fused variant. |
-| 0x09  | sub_7FF6CD2F5930 (146)       | Optional 0x20-prefix + 1-sub-op wrapper. Mapped to DefaultVariable (verified 0x58 also DefaultVariable). |
 | 0x10  | sub_7FF6CD2F00C0 (324)       | Runtime "Execution beyond end of script" sentinel. Should never execute. NothingToken is correct. |
 | 0x12  | sub_7FF6CD2F5740 (207)       | Variadic loop + final dispatch, terminator 0x3E. Could be FinalFunction-fused. |
-| 0x16  | sub_7FF6CD2F6800 (shared 0x05) | Mapped to DynamicArrayElement (was JumpIfNot — wrong). Real array index is 0x1E. May be alt. |
+| 0x16  | sub_7FF6CD2F6800 (shared 0x05) | Mapped to DynamicArrayElement. Real array index is 0x1E. May be alt. |
+| 0x1B  | sub_7FF6CD2F6AE0 (736, shared with 0x54) | Two bytes share this large handler. TBD. |
 | 0x20  | sub_7FF6CD3027A0 (117)       | HANDLE_OPTIONAL_DEBUG_INFO macro (peek byte 100, conditional consume 13 bytes). NOT EX_Return. |
 | 0x21  | sub_7FF6CD2F5A40 (179)       | 1-sub-expr wrapper. Could be many things. Mapped to DynArrayIterator. |
-| 0x32  | sub_7FF6CD2F6180 (189)       | 8-byte read + complex. Mapped to VectorConst (probably wrong). |
-| 0x36  | sub_7FF6CD2F7250 (237)       | 8 bytes (skip) + 1 byte sub-op + dispatch + writes 0. Possibly EX_DynArrayLength variant. |
-| 0x4D  | sub_7FF6CD2F5B80 (217)       | UStruct* + struct-buffer alloc + 1 sub-op + vtable copy. Possibly struct-init or EatReturnValue variant. |
-| 0x53  | sub_7FF6CD2F6240 (414)       | Complex. Mapped to LocalVariable (was BadToken). |
-| 0x69  | sub_7FF6CD2F0290 (194)       | Uses (a2+24) Object/Class info. State-related. Mapped to DelegateCmpNe. |
+| 0x32  | sub_7FF6CD2F6180 (189)       | 16-byte payload (UObject* + FName + 0). Mapped to VectorConst (12 bytes — under-reads 4). Likely **EX_InstanceDelegate** or similar. |
+| 0x36  | sub_7FF6CD2F7250 (237)       | 8 bytes (UProperty*) + 1 byte sub-op + sub-expr; sets *a3 = 0. Possibly EX_DynArrayLength setter or EX_DefaultParameter variant. |
+| 0x37  | sub_7FF6CD2F5810 (285)       | 2 sub-exprs + u16 + conditional variadic body (terminator 0x3E). Iterator-shape. Currently FloatConst (under-reads). Likely **EX_DynArrayIterator** or **EX_Iterator**. |
+| 0x54  | sub_7FF6CD2F6AE0 (736, shared with 0x1B) | Same handler as 0x1B. TBD. |
 
 ## Methodology Notes
 

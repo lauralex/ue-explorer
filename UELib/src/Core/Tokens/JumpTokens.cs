@@ -57,9 +57,13 @@ namespace UELib.Core
                         Decompiler._Nester.TryAddNestEnd(NestManager.Nest.NestType.Switch, Position + Size);
                     }
 
-                    return ReturnValueProperty != null
-                        ? ReturnValueProperty.Name
-                        : string.Empty;
+                    // EX_ReturnNothing is the compiler-emitted safety net at the end of any
+                    // value-returning function (zeroes the OUT param so control reaching the
+                    // end of a non-void function still returns a deterministic value). It
+                    // corresponds to no user-visible source — if the user wrote `return X;`
+                    // the compiler emits EX_Return + sub-expr instead. Render nothing so the
+                    // bare property name doesn't leak into the output as an orphan statement.
+                    return string.Empty;
                 }
             }
 

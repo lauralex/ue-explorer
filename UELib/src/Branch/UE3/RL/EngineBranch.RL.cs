@@ -30,7 +30,10 @@ namespace UELib.Branch.UE3.RL
                 { 0x00, typeof(NothingToken) },
                 { 0x01, typeof(StateVariableToken) },
                 { 0x02, typeof(IntConstToken) },
-                { 0x03, typeof(StructCmpEqToken) },
+                // 0x03: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // StructCmpEqToken (which reads 8 bytes UObject* + 2 sub-exprs — way too much
+                // consumption for an unmapped opcode). Real EX_StructCmpEq is at 0x53.
+                { 0x03, typeof(NothingToken) },
                 { 0x04, typeof(EndOfScriptToken) },
                 // 0x05: VERIFIED ArrayElement (or DynamicArrayElement — shared handler with 0x16).
                 // GNatives[0x05] = sub_7FF6CD2F6800 dispatches 2 sub-opcodes (Index + Base) and
@@ -55,7 +58,15 @@ namespace UELib.Branch.UE3.RL
                 // Tied with InterfaceCast/DynamicCast/MetaClassCast/ObjectConst — all 1-sub
                 // shapes in baseline UE3. Picked EatReturnValue as the simplest leaf-of-leaf.
                 { 0x08, typeof(EatReturnValueToken) },
-                { 0x09, typeof(DefaultVariableToken) },
+                // 0x09: VERIFIED 2-sub-expr wrapper (with optional 0x20 debug-info prefix).
+                // GNatives[0x09] = sub_7FF6CD2F5930 reads optional 0x20 prefix (skips DebugInfo
+                // bytes if present), then dispatches sub-opcode A, then dispatches sub-opcode B.
+                // Both sub-exprs are dispatched with the same `this` (Object). NO UProperty* read.
+                // Same shape as Let/LetBool/LetDelegate (assignment family). Map to LetToken so it
+                // renders as `<LHS> = <RHS>`. Was wrongly DefaultVariableToken (which reads 8-byte
+                // UProperty* — the 8 mistaken bytes were corrupting downstream stream alignment,
+                // producing `default.@NULL` orphans).
+                { 0x09, typeof(LetToken) },
                 { 0x0A, typeof(DelegateCmpEqToken) },
                 // 0x0B: VERIFIED IntConst (reads INT, NOT DynamicArrayElement).
                 // GNatives[0x0B] = sub_7FF6CD2F6DC0 reads 4-byte INT and writes to *a3.
@@ -254,8 +265,14 @@ namespace UELib.Branch.UE3.RL
                 // "Accessed null class context" error string).
                 { 0x41, typeof(VirtualFunctionToken) },
                 { 0x42, typeof(DefaultParameterToken) },
-                // 0x43: matches DebugInfoToken's 13-byte shape — strong win (+69 clean).
-                { 0x43, typeof(DebugInfoToken) },
+                // 0x43: VERIFIED 8-byte qword leaf (NOT DebugInfo).
+                // GNatives[0x43] = sub_7FF6CD2F6FA0 — same handler as 0x39, 0x3B, 0x5A. Just reads
+                // 8 bytes from Code, advances 8, writes qword to *a3. Empirical "+69 clean"
+                // earlier was misleading because DebugInfo's 13-byte payload happened to land on
+                // valid-looking next-token boundaries; the actual byte semantic is an 8-byte leaf.
+                // Was wrongly DebugInfoToken (13-byte payload), causing it to over-consume 5
+                // bytes per occurrence and scramble downstream tokens.
+                { 0x43, typeof(NameConstToken) },
                 { 0x44, typeof(UnicodeStringConstToken) },
                 { 0x45, typeof(EndFunctionParmsToken) },
                 // 0x46: VERIFIED LetBool-shape (dispatches 2 sub-opcodes — assignment).
@@ -302,8 +319,17 @@ namespace UELib.Branch.UE3.RL
                 // mistake: variadic loops were terminating ONE byte too early on Let
                 // assignments, scrambling all token alignment downstream.
                 { 0x4C, typeof(LetToken) },
-                { 0x4D, typeof(LocalVariableToken) },
-                { 0x4E, typeof(StructCmpNeToken) },
+                // 0x4D: VERIFIED 8-byte UStruct* + 1 sub-expr (struct construction / value).
+                // GNatives[0x4D] = sub_7FF6CD2F5B80 reads 8-byte UStruct*, allocates a struct
+                // buffer of size `v4[28] * v4[29]`, dispatches a sub-opcode, then calls
+                // `vtable[98]` (likely the struct's UProperty::CopyCompleteValue equivalent).
+                // Shape: 8 bytes (UStruct*) + 1 sub-expr. Was wrongly LocalVariable (8-byte
+                // UProperty* with no sub-expr — left the sub-opcode to be parsed as a sibling).
+                { 0x4D, typeof(StructValueTokenRL) },
+                // 0x4E: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // StructCmpNeToken (which reads 8 bytes UObject* + 2 sub-exprs). Real
+                // EX_StructCmpEq/Ne is at 0x53.
+                { 0x4E, typeof(NothingToken) },
                 { 0x4F, typeof(ObjectConstToken) },
                 // 0x50: VERIFIED StringConst (8-bit ASCII string until null).
                 // GNatives[0x50] = sub_7FF6CD2F6E00 calls sub_7FF6CD2B7EC0(&local, Code) — that's
@@ -316,10 +342,16 @@ namespace UELib.Branch.UE3.RL
                 // Was wrongly mapped to TrueToken; True is now at 0x3A.
                 { 0x51, typeof(UnicodeStringConstToken) },
                 { 0x52, typeof(DynamicCastToken) },
-                // 0x53: BadToken in baseline RL — score-mapping showed +112 clean / -230
-                // bad. Tied across all candidates (the byte appears in patterns where any
-                // shape parses cleanly). LocalVariableToken picked for consistency.
-                { 0x53, typeof(LocalVariableToken) },
+                // 0x53: VERIFIED StructCmpEq/Ne (8-byte UStruct* + 2 sub-exprs + struct comparison).
+                // GNatives[0x53] = sub_7FF6CD2F6240 reads 8-byte UStruct*, allocates two struct
+                // buffers, dispatches sub-opcode A (writes to buf1), dispatches sub-opcode B
+                // (writes to buf2), then `sub_7FF6CD658AC0(struct, buf1, buf2, 0)` performs the
+                // comparison and writes the bool result to *a3. The 4th arg = 0 suggests EQ.
+                // ComparisonToken (StructCmpEqToken's base) reads exactly UObject* + 2 sub-exprs
+                // — same wire format as 0x53. Was wrongly LocalVariableToken (8-byte UProperty*
+                // with no sub-exprs — left both sub-opcodes to be parsed as siblings, scrambling
+                // surrounding context).
+                { 0x53, typeof(StructCmpEqToken) },
                 // 0x54: 1-sub-token wrapper — tied across EatReturnValue, several Casts,
                 // ReturnNothing. Pick EatReturnValueToken (simplest pass-through).
                 { 0x54, typeof(EatReturnValueToken) },
@@ -409,10 +441,15 @@ namespace UELib.Branch.UE3.RL
                 // marker used by BoolVariable's runtime). Self is now correctly at 0x1F.
                 { 0x66, typeof(BoolVariableToken) },
                 { 0x67, typeof(SkipFunctionTokenRL) },
-                // 0x68: FNAME (8-byte) shape — tied across many (NameConst / Virtual /
-                // Global / Int64Const / Vector / DebugInfo). Picked NameConstToken.
-                { 0x68, typeof(NameConstToken) },
-                { 0x69, typeof(DelegateCmpNeToken) },
+                // 0x68: VERIFIED unmapped (binary handler = default error "Unknown code token").
+                // GNatives[0x68] = sub_7FF6CD31ACB0 (the default error handler). Should never
+                // appear in valid bytecode; if it does, treat as a 1-byte leaf (NothingToken)
+                // so the parser keeps progressing.
+                { 0x68, typeof(NothingToken) },
+                // 0x69: VERIFIED IteratorPop (1-byte leaf, runtime emits "Unexpected iterator pop
+                // command at %s:%04X" if reached outside an iterator scope). GNatives[0x69] =
+                // sub_7FF6CD2F0290. Was wrongly DelegateCmpNe.
+                { 0x69, typeof(IteratorPopToken) },
                 // 0x6A: VERIFIED EmptyDelegate (zero-out delegate result, no Code reads).
                 // GNatives[0x6A] = sub_7FF6CD2F7060 zeroes 24 bytes on stack, then constructs
                 // an empty delegate via sub_7FF6CD2A9C90(result, &empty). No Code reads.
@@ -434,10 +471,12 @@ namespace UELib.Branch.UE3.RL
                 // Was wrongly mapped to ContextInitTokenRL.
                 { 0x6C, typeof(ReturnNothingToken) },
                 { 0x6D, typeof(OutVariableToken) },
-                // 0x6E: FNAME (8-byte) shape — tied across NameConst / Virtual / Global /
-                // InstanceDelegate / DelegateProperty. Picked NameConstToken (simplest).
-                { 0x6E, typeof(NameConstToken) },
-                { 0x6F, typeof(ConditionalToken) },
+                // 0x6E: VERIFIED unmapped (binary handler = default error). Treat as 1-byte leaf.
+                { 0x6E, typeof(NothingToken) },
+                // 0x6F: VERIFIED unmapped (binary handler = default error). Was wrongly Conditional
+                // (which reads 3 sub-exprs + 4 bytes — caused massive over-consumption when this
+                // byte appeared as random padding). Treat as 1-byte leaf.
+                { 0x6F, typeof(NothingToken) },
 
                 // Special RL Native tokens
                 // Bytes 0x70..0x7F are the chained native-dispatcher bytes — each reads a sub_byte
