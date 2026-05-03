@@ -35,7 +35,11 @@ public class ExAlternativeExtendedNativeFunctionTokenRL : UStruct.UByteCodeDecom
             return;
         }
 
-        ushort nativeIndex = (ushort)(opCode + 6000);
+        // Binary RE: script byte 0x71 in RL is the chained native dispatcher for indexes 256-511
+        // (binary handler at 0x7FF6CD30C870 looks up GNatives[256 + sub_byte]). The previous
+        // "+6000" labeling produced names that didn't exist in the binary's GNatives. See
+        // RL_OPCODE_ANALYSIS.md "Native-name resolution" + "ghost natives" sections.
+        ushort nativeIndex = (ushort)(opCode + 256);
         var token = tokenFactory.CreateNativeToken(nativeIndex);
 
         Decompiler.DeserializedTokens.Add(token);

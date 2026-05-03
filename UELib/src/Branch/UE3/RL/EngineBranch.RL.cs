@@ -49,7 +49,13 @@ namespace UELib.Branch.UE3.RL
                 { 0x0D, typeof(DebugInfoToken) },
                 { 0x0E, typeof(IteratorNextToken) },
                 { 0x0F, typeof(FinalFunctionTokenRL) }, // new-build replacement for 0x38 super-call shape; FinalFunctionTokenRL now reads the mandatory skip byte after UFunction*; see RL_OPCODE_ANALYSIS.md
-                { 0x10, typeof(ExtendedNativeFunctionToken) },
+                // 0x10: was ExtendedNativeFunctionToken which read sub_byte and produced
+                // __NFUN_(sub+5000)__ placeholders. Binary RE: byte 0x10 dispatches to the
+                // "Execution beyond end of script" warning printer, NOT a chained native
+                // dispatcher. The natives at +5000 don't exist in GNatives (which spans only
+                // 0..4415). Mapping to NothingToken eliminates the ghost native call sites with
+                // no parse regression. Real extended natives use byte 0x71 (handled below).
+                { 0x10, typeof(NothingToken) },
                 { 0x11, typeof(ContextToken) },
                 { 0x12, typeof(EatReturnValueToken) },
                 { 0x13, typeof(NoObjectToken) },
@@ -175,7 +181,13 @@ namespace UELib.Branch.UE3.RL
                 { 0x5B, typeof(VectorConstToken) },
                 { 0x5C, typeof(JumpToken) },
                 { 0x5D, typeof(StepToken) },
-                { 0x5E, typeof(AlternativeExtendedNativeFunctionToken) },
+                // 0x5E: was AlternativeExtendedNativeFunctionToken (sub_byte + 5000). Binary
+                // RE: byte 0x5E in the runtime dispatch is a UObject-property-access handler
+                // (sub_7FF6CD309510), not a chained native dispatcher. The +5000 indexes don't
+                // exist in GNatives. Mapping to NothingToken eliminates ghost natives, parse
+                // remains 100% clean. Real natives go through byte 0x71 (chained dispatcher to
+                // GNatives[256+sub_byte]).
+                { 0x5E, typeof(NothingToken) },
                 // 0x5F: BadToken in baseline RL — tied across all candidates.
                 { 0x5F, typeof(LocalVariableToken) },
                 { 0x60, typeof(EmptyParmToken) },
