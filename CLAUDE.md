@@ -28,6 +28,35 @@ Copy-Item "D:\Games\rocketleague\TAGame\CookedPCConsole\TAGame.upk" `
 
 Then load the **decrypted** output via the uelib MCP (`mcp__uelib__load_package` with `build_target: "RocketLeague"`) and disassemble. Older fixtures under `rldecrypted\`, `rldecrypted\upkbackup\`, `rldecrypted\newupks\`, `rldecrypted\newupks2\` are from earlier RL versions and should not be used to validate work derived from a newer binary.
 
+After decryption, class names in the loaded package have **no namespace prefix**: pass `Actor` to `mcp__uelib__disassemble_function` / `decompile_function`, not `Engine.Actor`. (The package summary's `path` shows `Engine_decrypted` so the qualified path would be `Engine_decrypted.Actor`, but the bare name resolves correctly.)
+
+## Iterating on UELib code with the MCP server attached
+
+The Claude Code MCP launches `UELib/MCP/publish/Eliot.UELib.MCP.exe` once per session and holds an exclusive lock on it. So the normal `dotnet publish ... -o UELib/MCP/publish` rebuild fails with "process cannot access the file" while a session is live.
+
+Workflow that works:
+
+1. Make code changes (any project — both `Eliot.UELib` and `Eliot.UELib.MCP` get bundled).
+2. `dotnet publish UELib/MCP/Eliot.UELib.MCP.csproj -c Release -r win-x64 -p:PublishSingleFile=true --self-contained true -o UELib/MCP/publish_new` — publishes alongside `publish/` instead of overwriting it.
+3. Ask the user to: stop Claude Code, copy `publish_new\Eliot.UELib.MCP.exe` over `publish\Eliot.UELib.MCP.exe` (the lock is released once Claude exits), restart Claude Code.
+4. Reload the package in the new MCP session — the handle from before is invalid.
+
+`publish_new/` is gitignored-by-convention (don't commit). It exists only so the active session's exe stays untouched until the user does the swap.
+
+## Decompiler/parse-recovery invariants — pitfalls to avoid
+
+The bytecode parse and decompile pipeline has been hardened to recover from per-token failures (NTL drift, stale import-table indices, unmapped opcode bytes). When making further changes, keep these invariants:
+
+- **`ByteCodeDecompiler.Deserialize`'s catch branch must keep advancing `ScriptPosition`.** Originally it `break`-ed on any per-token exception, killing parsing of the rest of the function. The current behavior re-syncs `ScriptPosition` to the buffer cursor (or +1 to guarantee progress) and continues. If you reintroduce a `break`, all NTL-related cascades will once again abort entire functions.
+- **Do NOT make `Token.NextToken()` return a clamped/sentinel token when out of range — IT WILL HANG.** Many callers loop with patterns like `while (NextToken() is not Foo)` or `do { t = NextToken(); } while (string.IsNullOrEmpty(...))`. If `NextToken` keeps returning the same token without advancing, those loops spin forever. The correct pattern is bounds-check at each call site (see `DecompileParms` and `DecompileOperator` in `FunctionTokens.cs` for examples). `DecompileNext` *can* safely return `string.Empty` when out of range because string-concat callers continue cleanly.
+- **`DecompileNests` must check `CurrentTokenIndex` against `DeserializedTokens.Count` before reading `CurrentToken`.** After parse-recovery, the cursor can walk past the list end. Without this guard, the entire decompile fails with "Failed to format nests!" trace dumps.
+- **Tokens with `ReadObject<T>()` lookups should be defensive in RL forks** (e.g. `FinalFunctionTokenRL` catches the `Imports[]` `ArgumentOutOfRangeException`). The base classes can't be made defensive without breaking other UE3 forks. If you add a new RL token that reads object/property/function references, wrap the read in try/catch and fall through to `DeserializeCall(stream)` so the variadic body still consumes its bytes.
+- **`NativeFunctionToken.Decompile` falls back when `NativeItem` is null** — don't remove that guard; NTL drift produces null `NativeItem` constantly and the unconditional `NativeItem.Type` access cascades into NRE chains.
+
+## Current opcode-mapping state
+
+`RL_OPCODE_ANALYSIS.md` in `UELib/src/Branch/UE3/RL/` is the working note that captures (a) the IDA reverse-engineering trail (and why `sub_7FF6CD38C840` turned out to be `FScriptSerializer`, *not* the on-disk walker), (b) what's verified working on the current build, and (c) the gap list of unresolved primary opcode bytes (~14 lower-frequency bytes plus the suspect `0x45 = EndFunctionParms` map entry). Read it before adding new token mappings — it documents what was tried, what worked, and what to investigate next.
+
 ## Solution layout
 
 `UE Explorer.sln` contains:
