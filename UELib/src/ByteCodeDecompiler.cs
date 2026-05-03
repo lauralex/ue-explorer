@@ -917,6 +917,23 @@ namespace UELib.Core
                         output += nestEnd.Decompile();
 
                         topOfStack = _NestChain[_NestChain.Count - 1];
+
+                        // Tied-position case: NestBegin pass already pushed a new nest of the same
+                        // type at the same script offset (e.g. switch Case→Case). The NestEnd we're
+                        // processing belongs to the previous one, but it's now buried under the
+                        // newly-opened one. Walk down the chain to find the matching one and remove
+                        // it, leaving the just-pushed one on top.
+                        if (topOfStack.Type != nestEnd.Type && _NestChain.Count >= 2)
+                        {
+                            int matchIdx = _NestChain.FindLastIndex(n => n.Type == nestEnd.Type);
+                            if (matchIdx >= 0 && matchIdx < _NestChain.Count - 1)
+                            {
+                                _NestChain.RemoveAt(matchIdx);
+                                _Nester.Nests.RemoveAt(i);
+                                continue;
+                            }
+                        }
+
                         if (topOfStack.Type != nestEnd.Type)
                             output += $"/* !MISMATCHING REMOVE, tried {nestEnd.Type} got {topOfStack}! */";
                         _NestChain.RemoveAt(_NestChain.Count - 1);
