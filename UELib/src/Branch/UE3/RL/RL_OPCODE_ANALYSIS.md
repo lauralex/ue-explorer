@@ -304,50 +304,95 @@ two known sources, both out-of-scope for token-map work:
 - **`UnresolvedToken (0xNN)` markers** — ~14 lower-frequency primary opcodes whose
   shape is still unknown. See "Remaining gaps" below.
 
-## Remaining gaps in the primary token map
+## All primary opcodes resolved (commits `fe59443` and `308bb84`)
 
-After applying the 0x0F / 0x1D mappings, these primary bytes still appear in real
-bytecode and trigger parse desync (each byte's Decompile throws `/*@Error*/` which
-propagates through the parent expression):
+After building a `--score-mapping` driver inside `UELib/Repro/` that overrides the
+RL `TokenMap` at runtime and re-runs the full Engine sweep per candidate, every
+remaining gap was filled. Final per-package score against
+`absolutelynewupks/{Engine,TAGame,ProjectX}_decrypted.upk`:
 
-| Byte | Hex | Survey count | Where seen |
-|------|------|------|------|
-| 0x08 | 8 | 9× | Actor.PostBeginPlay, Pawn.* |
-| 0x0D | 13 | 2× | Camera.PostBeginPlay |
-| 0x21 | 33 | 3× | Pawn.PostBeginPlay (real position, not tail padding) |
-| 0x2B | 43 | 5× | Controller.PostBeginPlay, PlayerController.* |
-| 0x2C | 44 | 1× | GFxData_PRI_TA.SetPRI |
-| 0x32 | 50 | 1× | PlayerController.EnterStartState |
-| 0x3D | 61 | 1× | GameInfo.Logout |
-| 0x3F | 63 | 1× | GameInfo.PostBeginPlay |
-| 0x43 | 67 | 3× | Camera.PostBeginPlay |
-| 0x50 | 80 | 6× | Camera.PostBeginPlay (multiple positions) |
-| 0x54 | 84 | 2× | Camera.PostBeginPlay (multiple positions) |
-| 0x5A | 90 | 1× | Pawn.Destroyed |
-| 0x68 | 104 | 1× | Tail padding only — likely safe to leave unresolved |
-| 0x6B | 107 | 7× | Pawn.Destroyed, Pawn.FellOutOfWorld |
-| 0x6E | 110 | 2× | GFxData_PRI_TA.SetPRI |
+| Package  | Functions | Clean | Hung | Unresolved | Bad |
+|----------|----------:|------:|-----:|-----------:|----:|
+| Engine   |     4,725 | 4,725 |    0 |          0 |   0 |
+| TAGame   |    16,348 |16,348 |    0 |          0 |   0 |
+| ProjectX |     3,965 | 3,965 |    0 |          0 |   0 |
 
-Plus the `0x45 = EndFunctionParmsToken` map entry that never appears in the new
-survey (5× total occurrences, none as terminator) — likely a vestige from a wrong
-older theory; should be `BadToken` or marked `UnresolvedToken` until shape is known.
+Final mapping additions / changes (`commit fe59443` for the 19 RL `Unresolved`
+bytes, `commit 308bb84` for the 4 baseline `BadToken` bytes):
 
-For each of these, the next investigative step is: pick 2-3 functions where the
-byte appears, hex-dump the bytes around it via the disassembled token positions,
-and compare to baseline `EX_` shapes from `ScriptSerialization.h`. Since central-loop
-recovery is now in place, a wrong guess only corrupts that one token's child
-expressions instead of breaking the entire function — much lower-risk experimentation.
+| Byte | Mapped to                  | Notes                              |
+|------|----------------------------|------------------------------------|
+| 0x08 | EatReturnValueToken        | 1-sub wrapper                      |
+| 0x0D | DebugInfoToken             | 13-byte payload                    |
+| 0x21 | DynamicArrayIteratorToken  | 1-sub + iterator tail              |
+| 0x28 | LocalVariableToken         | 4-byte UProperty*; -2835 bad alone |
+| 0x2B | VectorConstToken           | 12-byte payload                    |
+| 0x2C | DebugInfoToken             | 13-byte payload                    |
+| 0x2D | EventUnsubscribeToken      | FNAME + 1 sub                      |
+| 0x32 | VectorConstToken           | 12-byte payload                    |
+| 0x35 | NameConstToken             | 8-byte FNAME                       |
+| 0x3A | DebugInfoToken             | 13-byte payload, +52 clean         |
+| 0x3D | VirtualFunctionToken       | FNAME + variadic                   |
+| 0x3F | VectorConstToken           | 12-byte payload                    |
+| 0x43 | DebugInfoToken             | 13-byte payload, +69 clean         |
+| 0x50 | UnicodeStringConstToken    | length-prefixed string             |
+| 0x53 | LocalVariableToken         | tied across all candidates         |
+| 0x54 | EatReturnValueToken        | 1-sub wrapper                      |
+| 0x57 | LocalVariableToken         | tied across all candidates         |
+| 0x5A | LocalVariableToken         | 4-byte UProperty*                  |
+| 0x5B | VectorConstToken           | 12-byte payload                    |
+| 0x5F | LocalVariableToken         | tied across all candidates         |
+| 0x62 | AssertToken                | 1 sub + payload                    |
+| 0x68 | NameConstToken             | 8-byte FNAME                       |
+| 0x6B | LocalVariableToken         | 4-byte UProperty*; top freq        |
+| 0x6E | NameConstToken             | 8-byte FNAME                       |
 
-## What's NOT yet done
+The `0x45 = EndFunctionParmsToken` map entry that the earlier analysis flagged as
+suspicious has been left in place — it scores well in the sweep and parses cleanly
+on real bytecode. Likely a duplicate dispatch (RL recognises both `0x45` and `0x4C`
+as variadic terminators).
 
-- **Case-0x19 sub-switch decoding** in `sub_7FF6CD38C840` (the IDA function that turned
-  out to be `FScriptSerializer`, not the on-disk walker). Its byte values don't directly
-  translate to on-disk bytes, but its case shapes are still useful corroboration once
-  shape inference for the listed gaps is done. Deferred.
-- **NTL regeneration for the current build.** Separate workstream — needs the
-  `Eliot.Extensions.NTLGenerator` plugin to be re-pointed at the current binary's
-  native table dump.
-- **`IteratorPopToken` / NestManager state** — when the cursor walks past expected
-  nest closes (because earlier tokens failed and didn't push their nest), the manager
-  emits orphan `{ }` blocks. Decompile-side bookkeeping fix; lower priority than the
-  token-map gaps.
+## Methodology — `--score-mapping` driver
+
+`UELib/Repro/Program.cs` exposes three modes built specifically for this work:
+
+- `--sweep` — iterates every UFunction in a package, runs `manager.Deserialize()`
+  with a 10s watchdog, then per-token `Decompile()`, and reports
+  (clean / unresolved / bad) tuples plus a histogram of remaining `UnresolvedToken`
+  opcode bytes.
+- `--analyze-byte 0xNN [--max N]` — for every primary occurrence of byte `NN`,
+  reflect-reads the next 16 raw stream bytes via `UObject.LoadBuffer()` →
+  `BaseStream`, clusters by signature, prints the top 40 with example sites.
+  Useful for picking candidate shapes by eye.
+- `--score-mapping 0xNN:TypeName[,...]` — uses reflection to override the active
+  `EngineBranchRL.TokenMap` indexer at runtime, then re-runs the sweep. Lets you
+  test arbitrary candidate type assignments without rebuilding/republishing the
+  MCP. (`FindTokenType` searches every loaded assembly by simple name.)
+
+Scoring metric: `clean` is the count of UFunctions with **no** `UnresolvedToken` /
+`BadToken` instances **and** no exception during `manager.Deserialize()`. Higher
+clean is better. `bad` and `unresolved` totals act as tie-breakers.
+
+The shell driver `.opcode_survey/test_candidates.ps1` runs ~80 candidate token
+types per byte and prints the top 10 sorted by clean — typically a few minutes per
+byte on a warm build. **Important caveat:** the score discriminates by *shape*
+(stream bytes consumed, ScriptPosition advanced), not semantic type. When two
+candidates with the same shape both produce the top score, picking between them is
+a guess; they have different decompile-output text but identical parse structure.
+The picks above prefer the simplest-leaf or most-script-plausible candidate.
+
+## What this does NOT fix
+
+- **Decompile output quality.** Per-function structure is sound, but specific token
+  semantics may be wrong wherever multiple candidates tied. E.g. mapping 0x6B to
+  `LocalVariableToken` when it's really `InstanceVariableToken` will print the
+  wrong name in the rendered source.
+- **NTL drift.** Native function calls still render as `__NFUN_NNN__()` because
+  the loaded `.NTL` is from an older RL build. Separate workstream — re-run
+  `Eliot.Extensions.NTLGenerator` against the current binary.
+- **NestManager / IteratorPop bookkeeping.** "MISMATCHING REMOVE" warnings still
+  appear when Switch/Case/IteratorPop combinations confuse the nest scope tracker.
+  Decompile-side fix, lower priority than the token-map work.
+- **Case-0x19 sub-switch decoding** in `sub_7FF6CD38C840` (the IDA function that
+  turned out to be `FScriptSerializer`, not the on-disk walker) is no longer
+  blocking — empirical inference filled the entire primary table without it.
