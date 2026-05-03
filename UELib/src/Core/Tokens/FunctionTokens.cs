@@ -153,7 +153,14 @@ namespace UELib.Core
                     while (Decompiler.CurrentTokenIndex + 1 < Decompiler.DeserializedTokens.Count)
                     {
                         var t = NextToken();
-                        tokens.Add(Tuple.Create(t, t.Decompile()));
+                        // Wrap t.Decompile() so a leaf NRE/AOOR in a sub-token doesn't abort the
+                        // containing call statement — matches the policy in DecompileNext and
+                        // PrecedenceToken.SafeDecompile.
+                        string text;
+                        try { text = t.Decompile(); }
+                        catch (NullReferenceException) { text = "/*<exc NRE>*/"; }
+                        catch (ArgumentOutOfRangeException) { text = "/*<exc AOOR>*/"; }
+                        tokens.Add(Tuple.Create(t, text));
                         if (t is EndFunctionParmsToken)
                             break;
                     }
