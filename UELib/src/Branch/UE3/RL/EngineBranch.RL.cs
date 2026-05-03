@@ -77,7 +77,11 @@ namespace UELib.Branch.UE3.RL
                 { 0x25, typeof(FalseToken) },
                 { 0x26, typeof(EndParmValueToken) },
                 { 0x27, typeof(ByteConstToken) },
-                { 0x28, typeof(BadToken) },
+                // 0x28: highest-frequency BadToken in baseline RL — score-mapping showed
+                // LocalVariableToken (4-byte UProperty*) gives +750 clean / -2835 bad. All
+                // tested 4/8-byte shapes scored identically; LocalVariable picked as the
+                // simplest variable-style leaf.
+                { 0x28, typeof(LocalVariableToken) },
                 { 0x29, typeof(DynamicArraySortToken) },
                 { 0x2A, typeof(IntOneToken) },
                 // 0x2B: 12-byte payload — VectorConst/RotationConst share this shape.
@@ -138,13 +142,17 @@ namespace UELib.Branch.UE3.RL
                 { 0x50, typeof(UnicodeStringConstToken) },
                 { 0x51, typeof(TrueToken) },
                 { 0x52, typeof(DynamicCastToken) },
-                { 0x53, typeof(BadToken) },
+                // 0x53: BadToken in baseline RL — score-mapping showed +112 clean / -230
+                // bad. Tied across all candidates (the byte appears in patterns where any
+                // shape parses cleanly). LocalVariableToken picked for consistency.
+                { 0x53, typeof(LocalVariableToken) },
                 // 0x54: 1-sub-token wrapper — tied across EatReturnValue, several Casts,
                 // ReturnNothing. Pick EatReturnValueToken (simplest pass-through).
                 { 0x54, typeof(EatReturnValueToken) },
                 { 0x55, typeof(IteratorPopToken) },
                 { 0x56, typeof(DebugInfoToken) },
-                { 0x57, typeof(BadToken) },
+                // 0x57: BadToken in baseline RL — tied across all candidates.
+                { 0x57, typeof(LocalVariableToken) },
                 { 0x58, typeof(StringConstToken) },
                 { 0x59, typeof(VirtualFunctionToken) },
                 // 0x5A: many candidates tied at the same clean count.
@@ -155,7 +163,8 @@ namespace UELib.Branch.UE3.RL
                 { 0x5C, typeof(JumpToken) },
                 { 0x5D, typeof(StepToken) },
                 { 0x5E, typeof(AlternativeExtendedNativeFunctionToken) },
-                { 0x5F, typeof(BadToken) },
+                // 0x5F: BadToken in baseline RL — tied across all candidates.
+                { 0x5F, typeof(LocalVariableToken) },
                 { 0x60, typeof(EmptyParmToken) },
                 { 0x61, typeof(EmptyDelegateToken) },
                 // 0x62: AssertToken-like shape (1 sub + small payload). Tied across many
