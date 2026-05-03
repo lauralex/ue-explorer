@@ -65,17 +65,20 @@ namespace UELib.Core
                     // or bad cursor inside the sub-token's body) only loses the sub-expression,
                     // not the entire enclosing statement. Scope the catch to the two known
                     // failure shapes — anything else escapes so genuine bugs aren't masked.
+                    // Markers include the offending OpCode + Token-type so the masked byte is
+                    // greppable for follow-up investigation (NRE/AOOR here usually means an
+                    // unmapped or wrongly-mapped opcode).
                     try
                     {
                         return token.Decompile();
                     }
                     catch (NullReferenceException)
                     {
-                        return "/*<exc NRE>*/";
+                        return $"/*<exc NRE 0x{token.OpCode:X2} {token.GetType().Name}>*/";
                     }
                     catch (ArgumentOutOfRangeException)
                     {
-                        return "/*<exc AOOR>*/";
+                        return $"/*<exc AOOR 0x{token.OpCode:X2} {token.GetType().Name}>*/";
                     }
                 }
 

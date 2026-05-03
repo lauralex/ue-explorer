@@ -181,6 +181,15 @@ namespace UELib.Core
                             {
                                 recovered = posBefore + 1;
                             }
+                            // Clamp at scriptSize so recovery never advances PAST the function's
+                            // bytecode. Without this, an over-reading sub-token can leave the
+                            // buffer cursor in the next function's bytes, then the central loop
+                            // adds orphan tokens (storage_position > scriptSize) that surface in
+                            // decompile output as trailing junk like `==` or numeric literals.
+                            if (recovered >= scriptSize)
+                            {
+                                break;
+                            }
                             ScriptPosition = recovered;
                             try
                             {

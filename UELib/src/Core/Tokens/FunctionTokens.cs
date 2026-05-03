@@ -44,8 +44,8 @@ namespace UELib.Core
                     // Mirror DecompileNext's narrow-catch policy so a leaf NRE/AOOR doesn't
                     // bubble up and abort the parent operator/call statement.
                     try { return t.Decompile(); }
-                    catch (NullReferenceException) { return "/*<exc NRE>*/"; }
-                    catch (ArgumentOutOfRangeException) { return "/*<exc AOOR>*/"; }
+                    catch (NullReferenceException) { return $"/*<exc NRE 0x{t.OpCode:X2} {t.GetType().Name}>*/"; }
+                    catch (ArgumentOutOfRangeException) { return $"/*<exc AOOR 0x{t.OpCode:X2} {t.GetType().Name}>*/"; }
                 }
 
                 private static string PrecedenceToken(Token t)
@@ -158,8 +158,8 @@ namespace UELib.Core
                         // PrecedenceToken.SafeDecompile.
                         string text;
                         try { text = t.Decompile(); }
-                        catch (NullReferenceException) { text = "/*<exc NRE>*/"; }
-                        catch (ArgumentOutOfRangeException) { text = "/*<exc AOOR>*/"; }
+                        catch (NullReferenceException) { text = $"/*<exc NRE 0x{t.OpCode:X2} {t.GetType().Name}>*/"; }
+                        catch (ArgumentOutOfRangeException) { text = $"/*<exc AOOR 0x{t.OpCode:X2} {t.GetType().Name}>*/"; }
                         tokens.Add(Tuple.Create(t, text));
                         if (t is EndFunctionParmsToken)
                             break;
