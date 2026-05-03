@@ -342,6 +342,16 @@ namespace UELib.Core
 
                 public override string Decompile()
                 {
+                    // NativeItem can be null when the native index isn't in the loaded NTL (NTL
+                    // drift across game versions). Fall back to a comment + DecompileCall so the
+                    // rest of the surrounding statement still has a chance to render.
+                    if (NativeItem == null)
+                    {
+                        var fallback = DecompileCall($"/* unresolved native 0x{OpCode:X2} */");
+                        Decompiler._CanAddSemicolon = true;
+                        return fallback;
+                    }
+
                     string output;
                     switch (NativeItem.Type)
                     {
