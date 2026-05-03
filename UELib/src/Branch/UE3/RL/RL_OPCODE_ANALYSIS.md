@@ -425,6 +425,89 @@ Not fixed yet (see "What this does NOT fix" below) — the right answer needs an
 look at the binary's case `0x49` body, since both candidate shapes parse cleanly and
 we can't distinguish purely empirically.
 
+## Native-name resolution (`__NFUN_NNN__` placeholders)
+
+UE3 native function call sites (the `NativeFunctionToken` and its extended-native
+dispatch via opcode `0x10`) need a `(native_index → name)` map to render readable
+text. The shipped `.NTL` files in `UE Explorer/Native Tables/` are baseline
+UT3/UDK and don't cover RL's full index space, so call sites used to render as
+`__NFUN_5113__()`, `__NFUN_145__()`, etc.
+
+**What we wired up.** `NativeFunctionToken.Decompile` now falls back to a
+process-global cache built from every loaded package's `UFunction` objects whose
+`NativeToken != 0`. `NativeFunctionToken.IndexPackageNatives(pkg)` is called
+automatically by `MCP/Tools/PackageTools.LoadPackage` and the standalone Repro
+tool's `--preload`, so loading e.g. Engine + Core gets you ~205 named natives.
+
+| Source package | UFunction-declared natives |
+|----------------|----------------------------|
+| Core           | ~161 (Object operators / string / math)  |
+| Engine         | ~44 (Actor.FastTrace, Sleep, Trace, etc.)|
+| TAGame, ProjectX, IpDrv, GFxUI, … | 0 each   |
+
+After loading Core+Engine, every call site to a native at index ≤ 3971 resolves;
+Pawn.PostBeginPlay → `super.PostBeginPlay()`, FastTrace's body → `Divide_IntInt`,
+`InStr`, `IsA`, `Round`, etc.
+
+**What's still missing — extended natives (≥ 5000).** RL bytecode references
+indexes like 5019, 5113, 5500. None of these are declared as `UFunction`s in any
+script package — they're pure engine intrinsics. The corresponding C++ exec
+functions exist in `RocketLeague_Dumped_latest.exe` (e.g. the binary contains
+`UObjectexecGetTypedOuter`, `AActorexecFastTrace` strings followed by their
+function pointers in registration tables at `0x7ff6cf17fd80` etc.), but the
+registration tables are pure `(name_string_ptr, function_ptr)` pairs — the
+**native index isn't stored alongside**. UE3 assigns indexes at runtime by
+matching script-declared `native(NNN)` decls against registered names.
+
+To finish closing the gap two paths exist, both binary RE work outside this
+library:
+
+1. Find the `UFunction::Bind` (or RL equivalent) that walks both the registration
+   tables and the engine class layouts, and reverse the ordering convention to
+   recover the (name → index) mapping.
+2. Find any code site that calls `GNatives[NNN](…)` directly with a literal NNN
+   in the 5000+ range, and walk back from there.
+
+Until that's done, ~30–40 % of decompile output for any script function still
+contains `__NFUN_NNN__` placeholders for these intrinsic calls — the function
+structure renders correctly, only the call name is missing.
+
+## Decompile resilience
+
+To get useful output even when individual sub-tokens hit edge cases (null
+UObject ref, cursor walked past the deserialized list), the decompile pipeline
+now:
+
+- **`DynamicCastToken` / `MetaClassCastToken` / `InterfaceCastToken`**: guard
+  `CastClass.Name` with a null check, fall back to `/* unresolved cast */`
+  inline.
+- **`StructMemberToken`**: guard `Property.Name` similarly.
+- **`AssertSkipCurrentToken<T>`**: bounds-check before `NextToken` to survive a
+  parent token whose assumed sub-token shape doesn't match the wire format.
+- **`SkipFunctionTokenRL.Decompile`**: replace `do { skip = NextToken() } while`
+  loop with a bounds-checked `while` so a missing trailing `EndFunctionParms`
+  doesn't AOOR-abort the statement.
+- **`Token.DecompileNext`**: wrap the recursed `token.Decompile()` in a narrow
+  catch for `NullReferenceException` / `ArgumentOutOfRangeException` only,
+  emitting an inline `/*<exc NRE>*/` or `/*<exc AOOR>*/` placeholder so the
+  enclosing statement still renders. Other exception types still propagate
+  to the statement-level catch (so genuine bugs aren't masked).
+- **`FinalFunctionTokenRL.Decompile`**: explicit `Function.Outer == null` guard
+  before `base.Decompile()`, instead of catching all NREs.
+
+Engine package decompile-survey numbers (from `Repro --decompile-survey`):
+
+| metric              | before today | after fixes |
+|---------------------|--------------|-------------|
+| fully clean fns     | 2085 (44%)   | 3222 (68%)  |
+| stmt-error fns      | 1199         |   20        |
+| MISMATCHING REMOVE  |   45         |   44        |
+| with __NFUN_ refs   | 1842         | 1477        |
+| parse clean         | 4725 (100%)  | 4725 (100%) |
+
+TAGame: 9814/16348 (60%) fully clean, 262 stmt-errors.
+ProjectX: 2812/3965 (71%) fully clean, 47 stmt-errors.
+
 ## What this does NOT fix
 
 - **Decompile output quality.** Per-function structure is sound, but specific token
