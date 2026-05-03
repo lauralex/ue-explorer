@@ -131,6 +131,8 @@ namespace UELib.Core
                     _Buffer.Seek(_Container.ScriptOffset, SeekOrigin.Begin);
                     int scriptSize = _Container.ByteScriptSize;
                     while (ScriptPosition < scriptSize)
+                    {
+                        int posBefore = ScriptPosition;
                         try
                         {
                             DeserializeNext();
@@ -140,6 +142,7 @@ namespace UELib.Core
                             LibServices.Debug("Failed to deserialize token at position:" + ScriptPosition);
                             LibServices.LogService.SilentException(exception);
 
+                            // Cannot safely recover from a stack overflow.
                             break;
                         }
                         catch (EndOfStreamException exception)
@@ -147,6 +150,7 @@ namespace UELib.Core
                             LibServices.Debug("Failed to deserialize token at position:" + ScriptPosition);
                             LibServices.LogService.SilentException(exception);
 
+                            // Genuinely past the script end — stop.
                             break;
                         }
                         catch (Exception exception)
@@ -154,8 +158,29 @@ namespace UELib.Core
                             LibServices.Debug("Failed to deserialize token at position:" + ScriptPosition);
                             LibServices.LogService.SilentException(exception);
 
-                            break;
+                            // Best-effort recovery: re-sync ScriptPosition with the buffer cursor
+                            // (which reflects what was actually read before the throw) and continue
+                            // at the next byte. Without this, one throwing token aborts the entire
+                            // script — even though most failures (NTL drift, stale import indices)
+                            // only corrupt one token's interpretation, not the whole stream.
+                            int bufferPos = (int)(_Buffer.Position - _Container.ScriptOffset);
+                            int recovered = bufferPos > ScriptPosition ? bufferPos : ScriptPosition;
+                            if (recovered <= posBefore)
+                            {
+                                recovered = posBefore + 1;
+                            }
+                            ScriptPosition = recovered;
+                            try
+                            {
+                                _Buffer.Position = _Container.ScriptOffset + ScriptPosition;
+                            }
+                            catch
+                            {
+                                // Buffer cannot seek to recovered position — give up.
+                                break;
+                            }
                         }
+                    }
                 }
                 finally
                 {
