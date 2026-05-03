@@ -74,13 +74,16 @@ namespace UELib.Branch.UE3.RL
                 // 0..4415). Mapping to NothingToken eliminates the ghost native call sites with
                 // no parse regression. Real extended natives use byte 0x71 (handled below).
                 { 0x10, typeof(NothingToken) },
-                // 0x11: VERIFIED StateVariable (state-machine variable lookup).
-                // GNatives[0x11] = sub_7FF6CD2ED370 reads 8-byte qword (FName/index), then loops
-                // walking the state stack at (a2+72) until matching entry found —
-                // `for (result = state_list; *result != name; result = result->next);`.
-                // That is the canonical EX_StateVariable runtime behavior (resolves a variable
-                // declared inside a `state { ... }` block). Real Context is at 0x28.
-                { 0x11, typeof(StateVariableToken) },
+                // 0x11: VERIFIED LocalOutVariable (out-parameter access via OutParms list).
+                // GNatives[0x11] = sub_7FF6CD2ED370 reads 8-byte qword (UProperty* or FName),
+                // then loops walking `(a2+72)` (FFrame::OutParms — the linked list of out-by-ref
+                // parameters) until matching entry found. That's the canonical EX_LocalOutVariable
+                // runtime — out-params live in their own frame separate from Locals/Instance.
+                // Empirically appears for `const out` / `out` parameter accesses in PRI_TA.SetLoadouts
+                // (the `Loadouts` and `LoadoutAttributes` parameters). Originally guessed
+                // StateVariable based on linked-list-walk pattern, but OutParms is a more
+                // accurate match.
+                { 0x11, typeof(OutVariableToken) },
                 { 0x12, typeof(EatReturnValueToken) },
                 { 0x13, typeof(NoObjectToken) },
                 { 0x14, typeof(DynamicArrayLengthToken) },
@@ -104,7 +107,15 @@ namespace UELib.Branch.UE3.RL
                 // IDA mis-named). Aliased with 0x2E to the same empty stub. Was wrongly mapped
                 // to BoolVariable (which reads a sub-expression).
                 { 0x1D, typeof(NothingToken) },
-                { 0x1E, typeof(NothingToken) },
+                // 0x1E: VERIFIED ArrayElement (Index + Base sub-exprs + bounds-check).
+                // GNatives[0x1E] = sub_7FF6CD2ED550 dispatches 2 sub-opcodes (the Index and Base
+                // expressions), then bounds-checks with unique error string
+                // "Accessed array '%s.%s' out of bounds (%i/%i)" — that's the canonical
+                // EX_ArrayElement / EX_DynArrayElement runtime. Empirically appears for static
+                // array indexing patterns like `FullLoadouts[Index] = Loadouts[Index]`.
+                // Was wrongly NothingToken (1-byte leaf) — every array index was getting
+                // dropped, leaving `<base> <index>` as separate tokens with no `[]` syntax.
+                { 0x1E, typeof(ArrayElementToken) },
                 // 0x1F: VERIFIED Self (writes `this` to result).
                 // GNatives[0x1F] = sub_7FF6CD2F5C60 (4-byte function): `*a3 = a1;` — pushes
                 // `this` to result, the canonical EX_Self runtime behavior. Was wrongly mapped
