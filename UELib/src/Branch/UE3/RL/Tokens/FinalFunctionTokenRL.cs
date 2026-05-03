@@ -70,7 +70,19 @@ public class FinalFunctionTokenRL : UStruct.UByteCodeDecompiler.FinalFunctionTok
             return DecompileCall("/* unresolved final function */");
         }
 
-        string output = base.Decompile();
+        // base.Decompile dereferences Function.Outer to format super-calls, but cooked RL
+        // packages can leave Function.Outer null when the resolved object isn't fully
+        // backed by import/export metadata. Wrap in try/catch so a null-outer doesn't
+        // abort the whole statement decompile.
+        string output;
+        try
+        {
+            output = base.Decompile();
+        }
+        catch (NullReferenceException)
+        {
+            return DecompileCall($"/* unresolved final function: {Function.Name} */");
+        }
 
         if (FunctionTokenMap.TryGetValue(Function.Name, out var tokenType))
         {
