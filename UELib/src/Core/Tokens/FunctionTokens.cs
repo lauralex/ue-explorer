@@ -351,13 +351,17 @@ namespace UELib.Core
             {
                 public NativeTableItem NativeItem;
 
-                // Cross-package cache of native index → UFunction name. Native indexes are global
+                // Cross-package cache of native index → NativeTableItem. Native indexes are global
                 // across all script packages (a native at index N has the same name everywhere),
                 // so when one package's NTL doesn't have the entry, we look in the merged map of
                 // every UnrealPackage we've ever decompile-touched. Engine.upk declares ~44
                 // natives, Core.upk ~161; together they cover most of the non-extended natives RL
                 // bytecode references.
-                private static readonly System.Collections.Generic.Dictionary<ushort, string> s_globalNativeNames = new();
+                //
+                // We store full NativeTableItem (not just names) so we recover the operator/function
+                // type from UFunction.IsOperator() — without it, every native renders as a function
+                // call (e.g. `Add_IntInt(a, b)` instead of `a + b`).
+                private static readonly System.Collections.Generic.Dictionary<ushort, NativeTableItem> s_globalNativeItems = new();
                 private static readonly System.Collections.Generic.HashSet<UnrealPackage> s_indexedPackages = new();
                 private static readonly object s_nativeNamesLock = new();
 
@@ -382,30 +386,82 @@ namespace UELib.Core
                                 // Don't overwrite — first registration wins. Conflicting names
                                 // would be a mismatched-build symptom worth surfacing rather than
                                 // silently masking.
-                                if (!s_globalNativeNames.ContainsKey(fn.NativeToken))
-                                    s_globalNativeNames[fn.NativeToken] = fn.Name.ToString();
+                                if (!s_globalNativeItems.ContainsKey(fn.NativeToken))
+                                    s_globalNativeItems[fn.NativeToken] = new NativeTableItem(fn);
                             }
                         }
                         // For RL specifically, fall back to the binary-extracted GNatives map. This
                         // catches cases where the user loaded a non-script-declaring package (e.g.
                         // TAGame) without preloading Engine/Core. Loaded UFunction names always win.
+                        // Names from the binary fallback are heuristically classified as operators
+                        // by name pattern (e.g. `Add_IntInt`, `AddEqual_FloatFloat`,
+                        // `Not_PreBool`) — needed because the binary doesn't carry the operator
+                        // flag, only the function name.
                         if (pkg.Build?.Name == UnrealPackage.GameBuild.BuildName.RocketLeague)
                         {
                             foreach (var kv in UELib.Branch.UE3.RL.RocketLeagueNativeNames.Map)
                             {
-                                if (!s_globalNativeNames.ContainsKey(kv.Key))
-                                    s_globalNativeNames[kv.Key] = kv.Value;
+                                if (!s_globalNativeItems.ContainsKey(kv.Key))
+                                {
+                                    s_globalNativeItems[kv.Key] = new NativeTableItem
+                                    {
+                                        Name = kv.Value,
+                                        ByteToken = kv.Key,
+                                        Type = ClassifyNativeByName(kv.Value),
+                                    };
+                                }
                             }
                         }
                     }
                 }
 
-                private string ResolveNameFromPackage(ushort index)
+                /// <summary>
+                /// Heuristically classify a native function as Operator / PreOperator / PostOperator
+                /// / Function based on its name. UnrealScript native operator names follow stable
+                /// patterns from the Object.uc declarations:
+                ///   - `Add_IntInt`, `Multiply_FloatFloat`, `LessEqual_FloatFloat` etc. — binary
+                ///     operators (one trailing type pair like `_IntInt`, `_FloatFloat`,
+                ///     `_StrStr`, `_NameName`, `_RotatorRotator`, `_VectorVector`, `_DelDel`,
+                ///     `_DelFunc`, `_ObjectObject`, `_InterfaceInterface`).
+                ///   - `Not_PreBool`, `Subtract_PreInt`, `Complement_PreInt` etc. — prefix
+                ///     operators (the `_Pre<Type>` suffix).
+                ///   - `Add_IntInt` style with `Equal` prefix on the verb (`AddEqual_FloatFloat`,
+                ///     `SubtractEqual_FloatFloat`) — assignment operators (binary).
+                /// Anything not matching is Function.
+                /// </summary>
+                private static FunctionType ClassifyNativeByName(string name)
+                {
+                    if (string.IsNullOrEmpty(name)) return FunctionType.Function;
+
+                    // Pre operators: contain "_Pre" followed by a type name.
+                    if (name.Contains("_Pre"))
+                        return FunctionType.PreOperator;
+
+                    // Binary operators: end with one of the known trailing-type pairs.
+                    string[] binarySuffixes =
+                    {
+                        "_IntInt", "_FloatFloat", "_ByteByte", "_BoolBool",
+                        "_StrStr", "_NameName", "_ObjectObject", "_InterfaceInterface",
+                        "_RotatorRotator", "_VectorVector", "_VectorFloat", "_FloatVector",
+                        "_VectorRotator", "_RotatorVector", "_RotatorFloat", "_FloatRotator",
+                        "_DelDel", "_DelFunc",
+                        "_FloatBool", "_IntBool",
+                    };
+                    foreach (var suffix in binarySuffixes)
+                    {
+                        if (name.EndsWith(suffix, System.StringComparison.Ordinal))
+                            return FunctionType.Operator;
+                    }
+
+                    return FunctionType.Function;
+                }
+
+                private NativeTableItem ResolveItemFromPackage(ushort index)
                 {
                     IndexPackageNatives(Package);
                     lock (s_nativeNamesLock)
                     {
-                        return s_globalNativeNames.TryGetValue(index, out var name) ? name : null;
+                        return s_globalNativeItems.TryGetValue(index, out var item) ? item : null;
                     }
                 }
 
@@ -426,15 +482,37 @@ namespace UELib.Core
                         return fallback;
                     }
 
-                    // If the NTL gave us a generated placeholder ("__NFUN_NNN__"), try to upgrade
-                    // to the real name by looking it up against any UFunction in the loaded package
-                    // with a matching NativeToken. Catches script-declared natives (Engine.upk
-                    // declares ~44, Core.upk ~161) without needing a refreshed .NTL file.
+                    // Always try to upgrade name + type from a loaded UFunction (or the binary
+                    // fallback's heuristic type). Reasons:
+                    //   1. The original NativeItem may be a generated placeholder ("__NFUN_NNN__")
+                    //      that just needs a real name.
+                    //   2. The original NativeItem may carry the long name (e.g. "Multiply_FloatFloat")
+                    //      from the binary fallback while the loaded UFunction has the actual
+                    //      operator FriendlyName ("*"). NativeTableItem(UFunction) sets
+                    //      Name = function.FriendlyName, so prefer that for operators.
+                    //   3. The original NativeItem.Type may be the default Function even when the
+                    //      function is actually an operator — must upgrade so the decompile uses
+                    //      operator syntax (`a * b`) instead of function-call syntax (`Mul(a, b)`).
                     string displayName = NativeItem.Name;
-                    if (displayName != null && displayName.StartsWith("__NFUN_", System.StringComparison.Ordinal))
+                    var resolved = ResolveItemFromPackage((ushort)NativeItem.ByteToken);
+                    if (resolved != null)
                     {
-                        string resolved = ResolveNameFromPackage((ushort)NativeItem.ByteToken);
-                        if (resolved != null) displayName = resolved;
+                        // Use resolved name when:
+                        //   - original is a placeholder, OR
+                        //   - resolved has operator type (its Name is the operator symbol from
+                        //     UFunction.FriendlyName).
+                        bool originalIsPlaceholder = displayName != null
+                            && displayName.StartsWith("__NFUN_", System.StringComparison.Ordinal);
+                        bool resolvedIsOperator = resolved.Type != FunctionType.Function;
+                        if (originalIsPlaceholder || resolvedIsOperator)
+                        {
+                            displayName = resolved.Name;
+                        }
+                        if (resolved.Type != FunctionType.Function)
+                        {
+                            NativeItem.Type = resolved.Type;
+                            NativeItem.OperPrecedence = resolved.OperPrecedence;
+                        }
                     }
 
                     string output;

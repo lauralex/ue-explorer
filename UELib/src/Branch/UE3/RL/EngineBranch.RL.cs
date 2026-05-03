@@ -106,7 +106,17 @@ namespace UELib.Branch.UE3.RL
                 // because the structure aligns with iterator-style usage seen in surrounding
                 // bytecode (Actor.PlayParticleEffect / Pawn.PostBeginPlay).
                 { 0x21, typeof(DynamicArrayIteratorToken) },
-                { 0x22, typeof(DelegateFunctionToken) },
+                // 0x22: VERIFIED Jump (unconditional, reads u16 offset, runtime jumps).
+                // GNatives[0x22] = sub_7FF6CD2F0610 reads 2 bytes (v3 — code offset), then sets
+                // `Code = ScriptStart + v3` (absolute jump). Wire format = 2 bytes only,
+                // matching baseline EX_Jump exactly. DelegateFunction is correctly at 0x40
+                // (1 byte + UProperty* + FName).
+                // Note: 0x5D also consumes 2 bytes but its runtime handler is `Code += 2`
+                // (just advances past the bytes without jumping) — likely the
+                // EX_JumpIfFilterEditorOnly opcode that the cooker emits as a no-op when
+                // not in editor. Both bytes parse to a 2-byte reader; mapping both to
+                // JumpToken keeps parsing aligned.
+                { 0x22, typeof(JumpToken) },
                 // 0x23: VERIFIED NoObject (writes 8-byte 0).
                 // GNatives[0x23] = sub_7FF6CD2F7050 (8-byte function): `*(_QWORD*)a3 = 0;` —
                 // 8-byte zero write, the EX_NoObject pattern. Was wrongly mapped to New
@@ -207,7 +217,13 @@ namespace UELib.Branch.UE3.RL
                 { 0x3E, typeof(EndFunctionParmsToken) },
                 // 0x3F: 12-byte payload — Vector/RotationConst shape.
                 { 0x3F, typeof(VectorConstToken) },
-                { 0x40, typeof(BoolVariableToken) },
+                // 0x40: VERIFIED DelegateFunction (1 byte + UProperty* + FName).
+                // GNatives[0x40] = sub_7FF6CD2F5F90 reads 1 byte (v8 — local-prop flag), 8 bytes
+                // (v10 — UProperty*), then 8 bytes (v13 — FName for function name), and dispatches
+                // a delegate call via FindFunction (sub_7FF6CD34DBB0). Wire format matches
+                // baseline EX_DelegateFunction case exactly: `XFER(BYTE); XFER_PROP_POINTER;
+                // XFERNAME();`. Was wrongly BoolVariable.
+                { 0x40, typeof(DelegateFunctionToken) },
                 // 0x41: VERIFIED VirtualFunction (8-byte FName + state-aware function lookup).
                 // GNatives[0x41] = sub_7FF6CD2F5E90 reads FName, calls
                 // sub_7FF6CD34DBB0(this, name, 0) — third arg 0 means "use state's version"
