@@ -81,15 +81,26 @@ namespace UELib.Core
 
                 protected string DecompileOperator(string operatorName)
                 {
+                    // Bounds-check NextToken so a truncated DeserializedTokens list (which can
+                    // happen after central-loop deserialize recovery on a malformed function)
+                    // doesn't throw ArgumentOutOfRangeException and abort the parent decompile.
                     string operand1;
                     do
                     {
+                        if (Decompiler.CurrentTokenIndex + 1 >= Decompiler.DeserializedTokens.Count)
+                        {
+                            return $"/* truncated */ {operatorName} /* truncated */";
+                        }
                         operand1 = PrecedenceToken(NextToken());
                     } while (string.IsNullOrEmpty(operand1));
 
                     string operand2;
                     do
                     {
+                        if (Decompiler.CurrentTokenIndex + 1 >= Decompiler.DeserializedTokens.Count)
+                        {
+                            return $"{operand1} {operatorName} /* truncated */";
+                        }
                         operand2 = PrecedenceToken(NextToken());
                     } while (string.IsNullOrEmpty(operand2));
 
@@ -130,12 +141,12 @@ namespace UELib.Core
                 private string DecompileParms()
                 {
                     var tokens = new List<Tuple<Token, string>>();
+                    while (Decompiler.CurrentTokenIndex + 1 < Decompiler.DeserializedTokens.Count)
                     {
-                    next:
                         var t = NextToken();
                         tokens.Add(Tuple.Create(t, t.Decompile()));
-                        if (!(t is EndFunctionParmsToken))
-                            goto next;
+                        if (t is EndFunctionParmsToken)
+                            break;
                     }
 
                     var output = new StringBuilder();

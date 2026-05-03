@@ -53,6 +53,10 @@ namespace UELib.Core
                 protected string DecompileNext()
                 {
                 tryNext:
+                    // Guard against the cursor walking past the deserialized list — can happen
+                    // after the central deserialize loop recovers from a per-token exception.
+                    if (Decompiler.CurrentTokenIndex + 1 >= Decompiler.DeserializedTokens.Count)
+                        return string.Empty;
                     var token = Decompiler.NextToken;
                     if (token is DebugInfoToken) goto tryNext;
 
@@ -70,6 +74,19 @@ namespace UELib.Core
                 protected Token NextToken()
                 {
                 tryNext:
+                    // If we'd walk past the end of the token list, return the last token (or a
+                    // synthetic placeholder via DeserializedTokens[^1]) to keep callers from
+                    // throwing on raw indexer access. Callers that need to detect end-of-list
+                    // should check Decompiler.CurrentTokenIndex against DeserializedTokens.Count
+                    // before calling.
+                    if (Decompiler.CurrentTokenIndex + 1 >= Decompiler.DeserializedTokens.Count)
+                    {
+                        // Don't move the cursor past the end; clamp at last index so subsequent
+                        // calls keep returning the same token rather than throwing.
+                        if (Decompiler.DeserializedTokens.Count == 0) return null!;
+                        Decompiler.CurrentTokenIndex = Decompiler.DeserializedTokens.Count - 1;
+                        return Decompiler.DeserializedTokens[Decompiler.CurrentTokenIndex];
+                    }
                     var t = Decompiler.NextToken;
                     if (t is DebugInfoToken) goto tryNext;
 
