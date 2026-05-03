@@ -39,26 +39,35 @@ namespace UELib.Core
 #pragma warning restore 642
                 }
 
+                private static string SafeDecompile(Token t)
+                {
+                    // Mirror DecompileNext's narrow-catch policy so a leaf NRE/AOOR doesn't
+                    // bubble up and abort the parent operator/call statement.
+                    try { return t.Decompile(); }
+                    catch (NullReferenceException) { return "/*<exc NRE>*/"; }
+                    catch (ArgumentOutOfRangeException) { return "/*<exc AOOR>*/"; }
+                }
+
                 private static string PrecedenceToken(Token t)
                 {
                     if (!(t is FunctionToken))
-                        return t.Decompile();
+                        return SafeDecompile(t);
 
                     // Always add ( and ) unless the conditions below are not met, in case of a VirtualFunctionCall.
                     var addParenthesis = true;
                     switch (t)
                     {
                         case NativeFunctionToken token:
-                            addParenthesis = token.NativeItem.Type == FunctionType.Operator;
+                            addParenthesis = token.NativeItem != null && token.NativeItem.Type == FunctionType.Operator;
                             break;
                         case FinalFunctionToken token:
-                            addParenthesis = token.Function.IsOperator();
+                            addParenthesis = token.Function != null && token.Function.IsOperator();
                             break;
                     }
 
-                    return addParenthesis 
-                        ? $"({t.Decompile()})" 
-                        : t.Decompile();
+                    return addParenthesis
+                        ? $"({SafeDecompile(t)})"
+                        : SafeDecompile(t);
                 }
 
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
