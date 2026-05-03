@@ -129,7 +129,15 @@ namespace UELib.Branch.UE3.RL
                 { 0x46, typeof(DelegateCmpEqToken) },
                 { 0x47, typeof(StopToken) },
                 { 0x48, typeof(EventSubscribeToken) },
-                { 0x49, typeof(FilterEditorOnlyToken) },
+                // 0x49: previously mapped to FilterEditorOnlyToken (which inherits from JumpToken
+                // and reads a 16-bit CodeOffset). Empirically the next 2 bytes after 0x49 are real
+                // opcode bytes (commonly 0x66 Self / 0x28 LocalVariable), so the JumpToken read
+                // produced a nonsense CodeOffset like 0x2866 and opened a runaway Scope nest, which
+                // then cascaded into "MISMATCHING REMOVE" warnings during nest reconstruction.
+                // 1-byte leaf (NothingToken) is consistent with the wire format and eliminates the
+                // false scope. Real semantic role still unknown — likely a no-op separator. See
+                // RL_OPCODE_ANALYSIS.md "0x49 — End:0x2866 smoking gun".
+                { 0x49, typeof(NothingToken) },
                 { 0x4A, typeof(DynamicArrayFindToken) },
                 { 0x4B, typeof(DelegateCmpNeToken) },
                 { 0x4C, typeof(EndFunctionParmsToken) },
