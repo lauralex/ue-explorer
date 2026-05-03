@@ -39,7 +39,17 @@ namespace UELib.Branch.UE3.RL
                 // ArrayElement and 0x16 to DynamicArrayElement (which inherits from ArrayElement
                 // in UELib so they decompile identically with the right semantics).
                 { 0x05, typeof(ArrayElementToken) },
-                { 0x06, typeof(NameConstToken) },
+                // 0x06: VERIFIED 1-sub-expr wrapper (NOT NameConst — that's at 0x39).
+                // GNatives[0x06] = sub_7FF6CD2F0020 reads 1 byte (sub-opcode), advances Code,
+                // peeks the next 8 bytes (without advancing) into a global, then dispatches the
+                // sub-opcode. The 8-byte peek captures the first qword of the sub-opcode's body
+                // (typically the UProperty* read by an InstanceVariable / LocalVariable
+                // sub-token), used by the runtime for null-check + flag-bit testing
+                // (`(*(v7+200) & *(qword_..._D7B0)) != 0`). That's the EX_BoolVariable runtime
+                // pattern — wraps a property access and tests the bool storage's bit mask.
+                // Was wrongly NameConstToken (which reads 8 bytes), causing `WorldInfo.''`
+                // patterns where the inner property name didn't resolve.
+                { 0x06, typeof(BoolVariableToken) },
                 { 0x07, typeof(ReturnNothingToken) },
                 // 0x08: empirically a 1-sub-token wrapper (best fit; EatReturnValue shape).
                 // Tied with InterfaceCast/DynamicCast/MetaClassCast/ObjectConst — all 1-sub
