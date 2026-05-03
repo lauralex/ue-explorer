@@ -61,16 +61,21 @@ namespace UELib.Core
                     var token = Decompiler.NextToken;
                     if (token is DebugInfoToken) goto tryNext;
 
-                    // Wrap sub-token decompile so a leaf NRE/AOOR (typically from a
-                    // null UObject or bad cursor inside the sub-token's body) only loses the sub-
-                    // expression, not the entire enclosing statement.
+                    // Wrap sub-token decompile so a leaf NRE/AOOR (typically from a null UObject
+                    // or bad cursor inside the sub-token's body) only loses the sub-expression,
+                    // not the entire enclosing statement. Scope the catch to the two known
+                    // failure shapes — anything else escapes so genuine bugs aren't masked.
                     try
                     {
                         return token.Decompile();
                     }
-                    catch (Exception ex)
+                    catch (NullReferenceException)
                     {
-                        return $"/*<exc {ex.GetType().Name}>*/";
+                        return "/*<exc NRE>*/";
+                    }
+                    catch (ArgumentOutOfRangeException)
+                    {
+                        return "/*<exc AOOR>*/";
                     }
                 }
 
