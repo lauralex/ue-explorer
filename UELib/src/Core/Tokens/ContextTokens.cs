@@ -169,7 +169,10 @@ namespace UELib.Core
                         Decompiler.PreComment = $"Struct:{Struct.GetOuterGroup()}";
                     }
 #endif
-                    return $"{DecompileNext()}.{Property.Name}";
+                    // Property can be null when the import index resolves to a forward-declared
+                    // field whose data isn't loaded (common in cooked RL packages).
+                    string propertyName = Property != null ? Property.Name.ToString() : "/* unresolved */";
+                    return $"{DecompileNext()}.{propertyName}";
                 }
             }
         }

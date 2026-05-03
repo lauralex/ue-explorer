@@ -248,7 +248,10 @@ namespace UELib.Core
 
                 public override string Decompile()
                 {
-                    return $"{CastClass.Name}({DecompileNext()})";
+                    // CastClass can be null when the import index resolves to a forward-declared
+                    // object whose class data isn't loaded (common in cooked RL packages).
+                    string name = CastClass != null ? CastClass.Name.ToString() : "/* unresolved cast */";
+                    return $"{name}({DecompileNext()})";
                 }
             }
 
@@ -257,7 +260,8 @@ namespace UELib.Core
             {
                 public override string Decompile()
                 {
-                    return $"Class<{CastClass.Name}>({DecompileNext()})";
+                    string name = CastClass != null ? CastClass.Name.ToString() : "/* unresolved meta-cast */";
+                    return $"Class<{name}>({DecompileNext()})";
                 }
             }
 

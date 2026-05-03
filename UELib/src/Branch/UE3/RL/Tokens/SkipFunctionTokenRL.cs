@@ -19,14 +19,15 @@ public class SkipFunctionTokenRL : UStruct.UByteCodeDecompiler.Token
     {
         UStruct.UByteCodeDecompiler.Token skip;
         string output = string.Empty;
-        do
+        // Bounds-check before NextToken — Deserialize may have stopped before reaching the
+        // expected EndFunctionParms (truncated bytecode or wrong shape inference); without the
+        // check, NextToken throws ArgumentOutOfRangeException and aborts the parent statement.
+        while (Decompiler.CurrentTokenIndex + 1 < Decompiler.DeserializedTokens.Count)
         {
             skip = NextToken();
-            if (skip is not UStruct.UByteCodeDecompiler.EndFunctionParmsToken)
-            {
-                output += $"\r\n{UDecompilingState.Tabs}{skip.Decompile()};";
-            }
-        } while (skip is not UStruct.UByteCodeDecompiler.EndFunctionParmsToken);
+            if (skip is UStruct.UByteCodeDecompiler.EndFunctionParmsToken) break;
+            output += $"\r\n{UDecompilingState.Tabs}{skip.Decompile()};";
+        }
 
         // Remove last comma from output
         if (output.EndsWith(";"))

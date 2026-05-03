@@ -101,6 +101,14 @@ namespace UELib.Core
                     where T : Token
                 {
                 tryNext:
+                    // Bounds-check before NextToken — when bytecode is truncated or a parent token's
+                    // assumed sub-token shape doesn't match the wire format, NextToken can otherwise
+                    // walk past the end and throw ArgumentOutOfRangeException, aborting the whole
+                    // statement decompile.
+                    if (Decompiler.CurrentTokenIndex + 1 >= Decompiler.DeserializedTokens.Count)
+                    {
+                        return;
+                    }
                     var token = Decompiler.NextToken;
                     if (token is DebugInfoToken) goto tryNext;
                     // This assertion will fail in most cases if the native indexes are a mismatch.
