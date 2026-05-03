@@ -16,14 +16,19 @@ public class FinalFunctionTokenRL : UStruct.UByteCodeDecompiler.FinalFunctionTok
 
     public override void Deserialize(IUnrealStream stream)
     {
-        // The bytecode encodes a packed UStruct* index that can point outside the package's
-        // import/export tables in the current RL build (especially after the 0x0F mapping was
-        // added — see RL_OPCODE_ANALYSIS.md). Catching the lookup failure lets the parser
-        // continue reading the variadic body so downstream tokens stay aligned. Decompile()
-        // below handles the resulting null Function.
+        // RL's 0x0F (and 0x38) FinalFunction shape reads UFunction* + 1 mandatory byte
+        // (purpose unknown — possibly arg-count, vtable hint, or flags). Without this skip
+        // byte, the next token (typically 0x3E IntZero) gets parsed as a spurious first
+        // argument — visible in `super.PostBeginPlay(0)` instead of `super.PostBeginPlay()`.
+        // Catching the ReadObject failure lets the parser continue reading the variadic
+        // body so downstream tokens stay aligned. Decompile() below handles null Function.
         try
         {
-            base.Deserialize(stream);
+            Function = stream.ReadObject<UFunction>();
+            Decompiler.AlignObjectSize();
+            stream.ReadByte();
+            Decompiler.AlignSize(sizeof(byte));
+            DeserializeCall(stream);
         }
         catch (ArgumentOutOfRangeException)
         {

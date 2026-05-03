@@ -48,7 +48,7 @@ namespace UELib.Branch.UE3.RL
                 // without disrupting the surrounding statement.
                 { 0x0D, typeof(DebugInfoToken) },
                 { 0x0E, typeof(IteratorNextToken) },
-                { 0x0F, typeof(FinalFunctionTokenRL) }, // new-build replacement for 0x38 super-call shape; see RL_OPCODE_ANALYSIS.md
+                { 0x0F, typeof(FinalFunctionTokenRL) }, // new-build replacement for 0x38 super-call shape; FinalFunctionTokenRL now reads the mandatory skip byte after UFunction*; see RL_OPCODE_ANALYSIS.md
                 { 0x10, typeof(ExtendedNativeFunctionToken) },
                 { 0x11, typeof(ContextToken) },
                 { 0x12, typeof(EatReturnValueToken) },
