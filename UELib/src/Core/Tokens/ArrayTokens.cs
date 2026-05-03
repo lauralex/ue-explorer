@@ -27,9 +27,16 @@ namespace UELib.Core
 
                     string keyExpression = DecompileNext();
 
-                    // DecompileNext until keyExpression is not empty or null
+                    // DecompileNext until keyExpression is not empty or null. Bounds-check the
+                    // cursor — DecompileNext returns "" past the list end (parse-recovery), and
+                    // without this guard the loop spins forever on malformed/recovered streams.
                     while (string.IsNullOrEmpty(keyExpression))
                     {
+                        if (Decompiler.CurrentTokenIndex + 1 >= Decompiler.DeserializedTokens.Count)
+                        {
+                            keyExpression = "/* truncated */";
+                            break;
+                        }
                         keyExpression = DecompileNext();
                     }
 
