@@ -40,6 +40,24 @@ public class ExAlternativeExtendedNativeFunctionTokenRL : UStruct.UByteCodeDecom
         // "+6000" labeling produced names that didn't exist in the binary's GNatives. See
         // RL_OPCODE_ANALYSIS.md "Native-name resolution" + "ghost natives" sections.
         ushort nativeIndex = (ushort)(opCode + 256);
+
+        // If GNatives[index] is the binary's "Unknown code token" default handler, emit a
+        // NothingToken instead of a NativeFunctionToken — otherwise we'd render
+        // __NFUN_NNN__(...) ghost calls for indexes the binary itself would error on at runtime.
+        if (UELib.Branch.UE3.RL.RocketLeagueUnknownNatives.Set.Contains(nativeIndex))
+        {
+            var nop = new UStruct.UByteCodeDecompiler.NothingToken();
+            Decompiler.DeserializedTokens.Add(nop);
+            nop.OpCode = OpCode;
+            nop.Decompiler = Decompiler;
+            nop.Position = scriptPosition;
+            nop.StoragePosition = (int)(stream.Position - Container.ScriptOffset - 1);
+            nop.Size = (short)(Decompiler.ScriptPosition - scriptPosition);
+            nop.StorageSize = (short)(stream.Position - Container.ScriptOffset - nop.StoragePosition);
+            nop.PostDeserialized();
+            return;
+        }
+
         var token = tokenFactory.CreateNativeToken(nativeIndex);
 
         Decompiler.DeserializedTokens.Add(token);

@@ -27,8 +27,26 @@ public class ChainedNativeDispatcherTokenRL : UStruct.UByteCodeDecompiler.Token
         // GNatives. Computed: native_index = (OpCode − 0x70) × 256 + subOpCode.
         ushort nativeIndex = (ushort)(((OpCode - 0x70) << 8) | subOpCode);
 
-        var token = tokenFactory.CreateNativeToken(nativeIndex);
+        // If the computed native index is GNatives[NNN] = DEFAULT (i.e. not a real native in
+        // this RL build), emit a NothingToken instead of a NativeFunctionToken. Otherwise the
+        // NativeFunctionToken renders as __NFUN_NNN__(...) ghost call in the decompile output.
+        // Empirically the bytes following sub_byte for unknown indexes don't include variadic
+        // args (parse-cleanness is preserved without consuming them).
+        if (UELib.Branch.UE3.RL.RocketLeagueUnknownNatives.Set.Contains(nativeIndex))
+        {
+            var nop = new UStruct.UByteCodeDecompiler.NothingToken();
+            Decompiler.DeserializedTokens.Add(nop);
+            nop.OpCode = OpCode;
+            nop.Decompiler = Decompiler;
+            nop.Position = scriptPosition;
+            nop.StoragePosition = (int)(stream.Position - Container.ScriptOffset - 1);
+            nop.Size = (short)(Decompiler.ScriptPosition - scriptPosition);
+            nop.StorageSize = (short)(stream.Position - Container.ScriptOffset - nop.StoragePosition);
+            nop.PostDeserialized();
+            return;
+        }
 
+        var token = tokenFactory.CreateNativeToken(nativeIndex);
         Decompiler.DeserializedTokens.Add(token);
         token.Decompiler = Decompiler;
         token.Position = scriptPosition;
