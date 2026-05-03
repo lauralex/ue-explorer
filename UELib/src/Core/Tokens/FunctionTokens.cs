@@ -482,36 +482,40 @@ namespace UELib.Core
                         return fallback;
                     }
 
-                    // Always try to upgrade name + type from a loaded UFunction (or the binary
-                    // fallback's heuristic type). Reasons:
-                    //   1. The original NativeItem may be a generated placeholder ("__NFUN_NNN__")
-                    //      that just needs a real name.
-                    //   2. The original NativeItem may carry the long name (e.g. "Multiply_FloatFloat")
-                    //      from the binary fallback while the loaded UFunction has the actual
-                    //      operator FriendlyName ("*"). NativeTableItem(UFunction) sets
-                    //      Name = function.FriendlyName, so prefer that for operators.
-                    //   3. The original NativeItem.Type may be the default Function even when the
-                    //      function is actually an operator — must upgrade so the decompile uses
-                    //      operator syntax (`a * b`) instead of function-call syntax (`Mul(a, b)`).
+                    // Three-tier resolution for the operator/function rendering:
+                    //   1. StandardOperatorSymbols (per-index hardcoded UE3 operator symbol map)
+                    //      — the cooked .upks strip script-source FriendlyName, so this re-supplies
+                    //      symbols like `*`, `+=`, `==` that would otherwise render as
+                    //      `Multiply_FloatFloat` etc. Wins when the index is a known stdlib operator.
+                    //   2. Loaded-UFunction lookup (ResolveItemFromPackage) — picks up native
+                    //      indexes declared in Engine.upk / Core.upk / TAGame.upk that aren't in
+                    //      the stdlib map (e.g. RL-specific operators).
+                    //   3. NativeItem (original NTL/placeholder) — last resort.
                     string displayName = NativeItem.Name;
-                    var resolved = ResolveItemFromPackage((ushort)NativeItem.ByteToken);
-                    if (resolved != null)
+                    var stdOp = (ushort)NativeItem.ByteToken;
+                    if (UELib.Branch.UE3.RL.StandardOperatorSymbols.Map.TryGetValue(stdOp, out var stdEntry))
                     {
-                        // Use resolved name when:
-                        //   - original is a placeholder, OR
-                        //   - resolved has operator type (its Name is the operator symbol from
-                        //     UFunction.FriendlyName).
-                        bool originalIsPlaceholder = displayName != null
-                            && displayName.StartsWith("__NFUN_", System.StringComparison.Ordinal);
-                        bool resolvedIsOperator = resolved.Type != FunctionType.Function;
-                        if (originalIsPlaceholder || resolvedIsOperator)
+                        displayName = stdEntry.Symbol;
+                        NativeItem.Type = stdEntry.Type;
+                        NativeItem.OperPrecedence = stdEntry.Precedence;
+                    }
+                    else
+                    {
+                        var resolved = ResolveItemFromPackage((ushort)NativeItem.ByteToken);
+                        if (resolved != null)
                         {
-                            displayName = resolved.Name;
-                        }
-                        if (resolved.Type != FunctionType.Function)
-                        {
-                            NativeItem.Type = resolved.Type;
-                            NativeItem.OperPrecedence = resolved.OperPrecedence;
+                            bool originalIsPlaceholder = displayName != null
+                                && displayName.StartsWith("__NFUN_", System.StringComparison.Ordinal);
+                            bool resolvedIsOperator = resolved.Type != FunctionType.Function;
+                            if (originalIsPlaceholder || resolvedIsOperator)
+                            {
+                                displayName = resolved.Name;
+                            }
+                            if (resolved.Type != FunctionType.Function)
+                            {
+                                NativeItem.Type = resolved.Type;
+                                NativeItem.OperPrecedence = resolved.OperPrecedence;
+                            }
                         }
                     }
 
