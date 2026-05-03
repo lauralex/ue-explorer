@@ -375,7 +375,8 @@ namespace UELib.Core
                                 // Don't overwrite — first registration wins. Conflicting names
                                 // would be a mismatched-build symptom worth surfacing rather than
                                 // silently masking.
-                                s_globalNativeNames.TryAdd(fn.NativeToken, fn.Name.ToString());
+                                if (!s_globalNativeNames.ContainsKey(fn.NativeToken))
+                                    s_globalNativeNames[fn.NativeToken] = fn.Name.ToString();
                             }
                         }
                         // For RL specifically, fall back to the binary-extracted GNatives map. This
@@ -385,7 +386,8 @@ namespace UELib.Core
                         {
                             foreach (var kv in UELib.Branch.UE3.RL.RocketLeagueNativeNames.Map)
                             {
-                                s_globalNativeNames.TryAdd(kv.Key, kv.Value);
+                                if (!s_globalNativeNames.ContainsKey(kv.Key))
+                                    s_globalNativeNames[kv.Key] = kv.Value;
                             }
                         }
                     }

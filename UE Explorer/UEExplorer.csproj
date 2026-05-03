@@ -49,7 +49,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <TargetZone>Internet</TargetZone>
     <IsPublishable>False</IsPublishable>
-    <PlatformTarget>AnyCPU</PlatformTarget>
+    <PlatformTarget>x64</PlatformTarget>
     <Title>UE Explorer</Title>
     <Version>$(VersionPrefix)1.6.1</Version>
     <Authors>EliotVU</Authors>
@@ -218,6 +218,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Native Tables\NativesTableList_UT3.NTL">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Native Tables\NativesTableList_RocketLeague.NTL">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
