@@ -527,6 +527,47 @@ Engine package decompile-survey numbers (from `Repro --decompile-survey`):
 TAGame: 9814/16348 (60%) fully clean, 262 stmt-errors.
 ProjectX: 2812/3965 (71%) fully clean, 47 stmt-errors.
 
+## Final state — chained dispatchers + 207-entry hardcoded fallback
+
+The previous "ghost natives" finding was *partly* wrong. Re-examining the binary
+revealed:
+
+- Bytes `0x70..0x7F` in script are **chained native dispatchers**, NOT raw
+  native indexes. Each reads one sub-byte and indexes
+  `GNatives[(byte − 0x70) × 256 + sub_byte]`, covering native indexes 0..4095.
+- The original UELib mapping (`byte ≥ firstNative=0x70 → NativeFunctionToken
+  with index = byte`) treated each as a leaf native at index 0x70..0x7F
+  (= 112..127), producing `__NFUN_112__..__NFUN_127__` placeholders that were
+  never real natives — they were the dispatchers themselves.
+
+Fix: `ChainedNativeDispatcherTokenRL` (+ keeping `ExAlternativeExtendedNativeFunctionTokenRL`
+for `0x71` because it has an Iterator dispatch sub-table). Each one reads
+sub_byte and computes `(OpCode − 0x70) × 256 + sub_byte` for the real native
+index. The resulting `NativeFunctionToken` then resolves through the loaded
+`UFunction.NativeToken` cache + the binary-extracted `RocketLeagueNativeNames`
+map.
+
+`RocketLeagueNativeNames.Map` is auto-loaded for any RocketLeague package and
+contains 207 (index, name) pairs spanning 29..3971: the byte-level operator
+natives (Add_IntInt, Cos, Min, FastTrace's namespace), actor/controller-class
+natives (Sleep, Trace, MoveTo, AllActors), vector helpers, and physics natives.
+Enough to render readable output even if only one RL package is loaded.
+
+Final survey numbers, all standalone (no preloads, no NTL file):
+
+|          | functions | fully clean | %     | __NFUN_ refs |
+|----------|-----------|-------------|-------|--------------|
+| Engine   | 4,725     | 4,598       | 97.3% | 47           |
+| TAGame   | 16,348    | 15,430      | 94.4% | 490          |
+| ProjectX | 3,965     | 3,811       | 96.1% | 55           |
+| total    | 25,038    | 23,839      | 95.2% | 592          |
+
+Parse-clean: 25,038 / 25,038 (100%) across all packages.
+
+The remaining `__NFUN_NNN__` placeholders are mostly index 200 (= `GNatives[200]`,
+which is the binary's "Unknown code token" error handler — unreachable script
+the binary would error on at runtime; our parser tolerates it).
+
 ## What this does NOT fix
 
 - **Decompile output quality.** Per-function structure is sound, but specific token
