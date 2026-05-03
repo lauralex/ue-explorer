@@ -16,18 +16,15 @@ public class FinalFunctionTokenRL : UStruct.UByteCodeDecompiler.FinalFunctionTok
 
     public override void Deserialize(IUnrealStream stream)
     {
-        // RL's 0x0F (and 0x38) FinalFunction shape reads UFunction* + 1 mandatory byte
-        // (purpose unknown — possibly arg-count, vtable hint, or flags). Without this skip
-        // byte, the next token (typically 0x3E IntZero) gets parsed as a spurious first
-        // argument — visible in `super.PostBeginPlay(0)` instead of `super.PostBeginPlay()`.
-        // Catching the ReadObject failure lets the parser continue reading the variadic
-        // body so downstream tokens stay aligned. Decompile() below handles null Function.
+        // RL's 0x0F FinalFunction wire format: 8-byte UFunction* + variadic args until
+        // EX_EndFunctionParms (now correctly mapped to byte 0x3E, was wrongly 0x4C).
+        // The runtime handler at GNatives[0x0F] (sub_7FF6CD2F5F00) reads exactly 8 bytes
+        // and dispatches vtable[76] which loops the variadic body. No "+1 mandatory byte"
+        // exists in the binary — the previous +1 was a band-aid for the wrong terminator.
         try
         {
             Function = stream.ReadObject<UFunction>();
             Decompiler.AlignObjectSize();
-            stream.ReadByte();
-            Decompiler.AlignSize(sizeof(byte));
             DeserializeCall(stream);
         }
         catch (ArgumentOutOfRangeException)

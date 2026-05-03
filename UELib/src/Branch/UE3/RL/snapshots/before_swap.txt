@@ -1,0 +1,63 @@
+RL OPCODE REMAP — "BEFORE" SNAPSHOTS
+======================================
+
+Captured before the 4-change critical swap:
+  - 0x3E: IntZeroToken            -> EndFunctionParmsToken (variadic terminator)
+  - 0x4C: EndFunctionParmsToken   -> LetToken              (was wrongly the terminator)
+  - 0x38: FinalFunctionTokenRL    -> ClassContextToken     (runtime confirms ClassContext via "Accessed null class context" error)
+  - FinalFunctionTokenRL.Deserialize: remove the spurious +1 mandatory byte read
+    (runtime handler at 0x7FF6CD2F5F00 reads exactly 8 bytes UFunction* and delegates to vtable[76])
+
+EVIDENCE:
+  - Two GNatives variadic-loop handlers (0x12 sub_7FF6CD2F5740 and 0x37 sub_7FF6CD2F5810)
+    both check `*v3 != 62` (0x3E) as the variadic terminator.
+  - 0x3E handler at 0x7FF6CD2F00B0 is `qword_7FF6CF27D7B8 = 0; --Code;` — un-consume terminator pattern.
+  - 0x4C handler at 0x7FF6CD2F08B0 has "Attempt to assign variable through None" string and
+    dispatches two sub-opcodes — that is the EX_Let runtime signature.
+  - 0x38 handler at 0x7FF6CD308710 has "Accessed null class context" string — EX_ClassContext signature.
+  - DeserializeCall in FunctionTokens.cs:38 terminates by `is EndFunctionParmsToken` token-type check —
+    swapping the byte mapping is sufficient (no hardcoded byte changes needed).
+
+==== Pawn.PostBeginPlay (Engine_decrypted, 114 bytes) ====
+event PostBeginPlay()
+{
+    super.PostBeginPlay();
+    // End:0x00
+    (self && (() ?  == Caps(case :, ''Not_PreBool('', new (0, self) @NULL,, default.@NULL,,,,ClearPathStep(,,,,, 67109384,,,Subtract_PreInt( ,,,)))) : )) && /* truncated */;
+}
+
+==== Object.IsA (Core_decrypted, native stub) ====
+// Export UObject::execIsA(FFrame&, void* const)
+native(197) final function bool IsA(name ClassName)
+{
+    (P1);
+}
+
+==== Actor.SetTimer (Engine_decrypted, native stub) ====
+// Export UActor::execSetTimer(FFrame&, void* const)
+native(280) final function SetTimer(float InRate, optional bool inbLoop, optional name inTimerFunc, optional Object inObj)
+{
+
+    none
+    NotEqual_IntInt(@NULL, @NULL, @NULL, ((@NULL) ?  : ),,,, AddEqual_FloatFloat(),,);
+}
+
+==== Actor.Destroyed (Engine_decrypted, 3 bytes) ====
+event Destroyed();
+
+DISASSEMBLY (Actor.Destroyed):
+  pos 0: 0x00 NothingToken            (size 1)
+  pos 1: 0x1D BoolVariableToken       (size 2)
+  pos 2: 0x10 NothingToken            (size 1)
+
+DISASSEMBLY (Pawn.PostBeginPlay) [first ~10 tokens]:
+  pos  0: 0x0F FinalFunctionTokenRL   (size 11) -> "super.PostBeginPlay(<garbage>)"
+  pos 10: 0x4C EndFunctionParmsToken  (size 1)  [under wrong assumption — actually Let]
+  pos 11: 0x55 NothingToken           (size 1)
+  pos 12: 0x82 AndTokenRL             (size 2)
+  pos 13: 0x12 EatReturnValueToken    (size 0)  [misalignment artifact]
+  pos 14: 0x12 EatReturnValueToken    (size 0)  [misalignment artifact]
+  pos 19: 0x00 NothingToken           (size 1)
+  pos 20: 0x82 AndTokenRL             (size 17)
+  ...
+  pos 70: 0x3E IntZeroToken           [this is the REAL variadic terminator after our change]

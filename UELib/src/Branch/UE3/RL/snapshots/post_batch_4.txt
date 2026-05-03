@@ -1,0 +1,74 @@
+RL OPCODE REMAP — POST-BATCH-4 SNAPSHOT
+
+Cumulative changes since before_swap.txt (4 batches, ~22 byte mappings):
+  Batch 1 (keystone):   0x3E EndFunctionParms, 0x4C Let, 0x38 ClassContext; FinalFunctionTokenRL +1 byte removed
+  Batch 2 (leaves):     0x0B IntConst, 0x1C IntZero, 0x1D Nothing, 0x1F Self, 0x23 NoObject, 0x27 False, 0x2A ByteConst,
+                        0x2B IntConstByte, 0x2E Nothing, 0x2F IntOne, 0x3A True, 0x60 VectorConst,
+                        0x65 LocalVariable, 0x6C ReturnNothing
+  Batch 3 (verify):     0x55 InstanceVariable, 0x66 BoolVariable, 0x50 StringConst, 0x51 UnicodeStringConst,
+                        0x59 GlobalFunction, 0x41 VirtualFunction, 0x6B PrimitiveCast, 0x58 DefaultVariable
+  Batch 4 (arrays):     0x05 ArrayElement, 0x16 DynamicArrayElement, 0x6A EmptyDelegate
+
+==== Pawn.PostBeginPlay (Engine_decrypted) ====
+event PostBeginPlay()
+{
+    super.PostBeginPlay();
+    EyeHeight = BaseEyeHeight;
+    goto J0x8200.Sort();
+     == Caps(,,,, '');
+    Xor_IntInt(, NotEqual_NameName(FacialAudioComp, none),, @NULL,, __OnAudioFinished__Delegate, vect(0.0000000, 0.0000000, 0.0000000), ClearPathStep(),,,,,,, 67109384,,,Subtract_PreInt( ,,,)).Sort();
+}
+
+REAL recognizable patterns NOW present:
+  super.PostBeginPlay()              clean super-call (was: super.PostBeginPlay(<garbage>))
+  EyeHeight = BaseEyeHeight          real Let between InstanceVariables (was completely missing)
+  FacialAudioComp                    InstanceVariable resolved to property name
+  __OnAudioFinished__Delegate        delegate property name resolved
+  vect(0.0000000, 0.0000000, 0.0000000) VectorConst at 0x60 working
+  ClearPathStep()                    FinalFunction with no spurious args
+  none                               NoObject correctly emitted
+
+REMAINING ISSUES:
+  - "goto J0x8200.Sort()" — likely from misaligned 0x29 (currently DynamicArraySortToken
+    but binary is a 2-byte + sub-op + state-label-jump pattern, NOT DynArraySort)
+  - "== Caps(,,,, '')" — empty LHS, mangled args from misalignment of 0x49 / 0x10 / 0x32
+  - Long nested operator chain Xor_IntInt(...).Sort() — multi-statement run-on, suggesting
+    misaligned high-impact opcodes are eating the gap between statements
+
+==== Compression.ZLibCompress (Core_decrypted, native stub) ====
+class Compression extends Object
+    native;
+
+native static final function bool ZLibCompress(const out array<byte> Uncompressed, out array<byte> OutCompressed)
+{
+     ==
+    @NULL
+}
+
+==== RotatorConversions.GetAsDegrees (Core_decrypted) ====
+static final function RotatorDegrees GetAsDegrees(const Rotator InRotator)
+{
+    local Rotator NormalizedRotator;
+    local /*0x00000000-0x00000100*/ private const RotatorDegrees StructInitializer_0x1;
+
+    NormalizedRotator = ;
+    AddEqual_FloatFloat(default.@NULL, StructInitializer_0x1Multiply_FloatFloat(float(EqualEqual_StrStr(default.@NULL,,,,, NormalizedRotator, switch()MultiplyEqual_FloatFloat(default.@NULL,,,, @NULL,Multiply_FloatFloat(float(NotEqual_RotatorRotator(default.@NULL,,,,, NormalizedRotator, switch()NotEqual_FloatFloat(default.@NULL,,,, @NULL,Multiply_FloatFloat(float(Trim(default.@NULL,,,,, NormalizedRotator, switch()).Find(StructInitializer_0x1)), ReturnValue,,,,, 0 == )).Find() = ).Find()))).Find() = ).Find())));
+    {
+        {
+            {
+}
+
+REMAINING ISSUES (RotatorConversions):
+  - structdefaultproperties block correctly emitted
+  - local declarations emit
+  - Function body still mangled — multi-statement collapse from misaligned bytes
+  - "switch()" empty rendering — comes from SwitchToken at byte 0x64; binary at 0x64 is
+    actually a 4-byte IntConst-shape, not Switch. Real Switch byte unknown.
+  - ".Find()" — DynamicArrayFindToken at 0x4A; binary handler at 0x4A is 609 bytes complex,
+    likely correct as a dynarray method but operands misaligned
+
+NEXT-PRIORITY BYTES (per advisor):
+  1. 0x10 — currently NothingToken (1 byte), binary is 324-byte handler accessing Object
+  2. 0x29 — currently DynamicArraySortToken, binary is 2-byte + sub-op + state-label-jump
+  3. 0x32 — currently VectorConstToken (12-byte), binary is 8-byte + complex (189 bytes)
+  4. 0x49 — currently NothingToken (1 byte), binary is 841-byte handler — enormous

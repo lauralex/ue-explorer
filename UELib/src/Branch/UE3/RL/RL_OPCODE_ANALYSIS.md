@@ -1,30 +1,72 @@
 # Rocket League opcode analysis
 
-> **HONEST STATUS NOTE (READ THIS FIRST)**
+> **STATUS UPDATE (2026-05-03 — major rewrite of the token map)**
 >
-> The numbers further down this file ("99.83% fully clean", parse-clean rates) measure
-> *absence of exceptions during decompile*, not *correctness of decompile output*. The
-> token map under `EngineBranchRL.BuildTokenMap` was built via empirical
-> `--score-mapping` shape inference: pick a token type whose
-> Deserialize consumes the right number of bytes per opcode without throwing. That
-> produces structurally-consistent parses but the byte→token *meanings* are wrong for
-> many bytes.
+> The map has been ground-truthed against the binary. The keystone was that
+> the variadic terminator is byte **0x3E** (was wrongly 0x4C). 0x4C is `EX_Let`,
+> not the terminator. Fixing this single byte plus a cascade of property/control-flow
+> bytes brings decompile output from gibberish to readable code:
 >
-> Real-world consequence: decompile output for non-trivial functions (Pawn.Destroyed,
-> PlayerController.PlayerTick, CustomMatchSettingsSave_TA.GetSettings) renders as
-> nested-paren gibberish that uses real native names (Add_IntInt, Cos, super.X())
-> but is not valid UnrealScript. Statement boundaries collapse into single
-> giant expressions; if/else and switch/case structures are scrambled; left-side of
-> assignments is often empty.
+> * `Pawn.SpawnDefaultController` decompiles with all 3 if-blocks, `Spawn()`,
+>   `Possess()` — near-perfect against `Engine\Classes\Pawn.uc`.
+> * `Pawn.PostBeginPlay` shows `super.PostBeginPlay()`, `EyeHeight = BaseEyeHeight`,
+>   `if(WorldInfo.X && Y) { ... }`, `FacialAudioComp.X = vect(...)`,
+>   `ClearPathStep()` — closely tracks baseline UE3 source.
 >
-> What works: function signatures (from UFunction metadata, not bytecode),
-> native-name resolution (binary-extracted, accurate), super-call patterns when
-> Function.Outer resolves, default-property blocks for simple classes, the lower-level
-> resilience that prevents exceptions from killing the whole decompile.
+> See `snapshots/before_swap.txt` for the original output to diff against.
 >
-> What doesn't: any expression-level token interpretation that depends on the wrong
-> shape choice — which is most of bytes 0x00..0x6F. See "Path to a working
-> decompiler" section below.
+> ### Verified RL byte→EX_ mapping (high-confidence, applied this session)
+>
+> | RL byte | EX_ name              | Binary fingerprint                                       |
+> |---------|-----------------------|----------------------------------------------------------|
+> | 0x05    | EX_ArrayElement       | shared handler with 0x16; dispatches 2 sub-opcodes        |
+> | 0x0B    | EX_IntConst           | reads INT (4 bytes), writes to *a3                       |
+> | 0x0F    | EX_FinalFunction      | reads 8-byte UFunction*, dispatches vtable[76]           |
+> | 0x11    | EX_StateVariable      | reads FName, walks state stack at (a2+72)                |
+> | 0x16    | EX_DynamicArrayElement | shared handler with 0x05                                |
+> | 0x1C    | EX_IntZero / EX_False | aliased: writes 0 (4-byte) — pair with 0x27              |
+> | 0x1D    | EX_Nothing            | empty stub (aliased with 0x2E)                           |
+> | 0x1F    | EX_Self               | `*a3 = a1` — pushes `this`                              |
+> | 0x23    | EX_NoObject           | `*(QWORD*)a3 = 0` — 8-byte zero                          |
+> | 0x27    | EX_False / EX_IntZero | aliased with 0x1C                                        |
+> | 0x28    | EX_Context            | sub-expr + 2 bytes + UField + type + sub-expr; "Accessed None '%s'" |
+> | 0x29    | EX_JumpIfNot          | u16 offset + sub-expr (was wrongly DynArraySort)         |
+> | 0x2A    | EX_ByteConst          | reads u8                                                 |
+> | 0x2B    | EX_IntConstByte       | reads i8 (signed variant of 0x2A)                        |
+> | 0x2E    | EX_Nothing            | aliased with 0x1D                                        |
+> | 0x2F    | EX_IntOne / EX_True   | writes 1 (aliased with 0x3A)                             |
+> | 0x38    | EX_ClassContext       | "Accessed null class context '%s'"                       |
+> | 0x39    | EX_NameConst          | 8-byte FName reader                                      |
+> | 0x3A    | EX_True / EX_IntOne   | aliased with 0x2F                                        |
+> | 0x3E    | **EX_EndFunctionParms** | variadic terminator — `Code -= 1` un-consume pattern.  |
+> |         |                       | Verified by 2 GNatives variadic-loop handlers (0x12, 0x37) checking `*Code != 0x3E` |
+> | 0x41    | EX_VirtualFunction    | FName + state-aware lookup, flag = 0                     |
+> | 0x49    | EX_LetDelegate        | 2 sub-opcodes + cleanup (delegate-replace pattern)       |
+> | 0x4C    | EX_Let / LetBool      | "Attempt to assign variable through None"                |
+> | 0x50    | EX_StringConst        | calls FString-from-cstring constructor                   |
+> | 0x51    | EX_UnicodeStringConst | calls `wcslen` on Code (UTF-16)                          |
+> | 0x55    | EX_InstanceVariable   | UProperty* + addr = `this + offset`                      |
+> | 0x57    | **EX_Switch**         | UProperty* + property type + sub-expr + case-loop with 0xFFFF terminator using `wcsicmp`/`memcmp` |
+> | 0x58    | EX_DefaultVariable    | UProperty* + object-flag check                           |
+> | 0x59    | EX_GlobalFunction     | FName + lookup with state-skip flag = 1                  |
+> | 0x5C    | EX_GotoLabel          | "GotoLabel (%s): Label not found"                        |
+> | 0x5D    | EX_Jump               | exactly `Code += 2`                                      |
+> | 0x60    | EX_VectorConst / RotationConst | reads 12 bytes (3 INTs)                         |
+> | 0x64    | EX_FloatConst         | 4-byte literal (sister to 0x0B IntConst)                 |
+> | 0x65    | EX_LocalVariable      | UProperty* + addr = `Locals[offset]`                     |
+> | 0x66    | EX_BoolVariable       | 1-sub-expr wrapper + flag clear                          |
+> | 0x6A    | EX_EmptyDelegate      | zeroes 24 bytes + constructs empty delegate              |
+> | 0x6B    | EX_PrimitiveCast      | 1 byte + dispatch into separate cast-type sub-table      |
+> | 0x6C    | EX_ReturnNothing      | "Control reached the end of non-void function"           |
+>
+> ### Still TODO (less common, complex, or disputed)
+>
+> * 0x06, 0x09, 0x10, 0x12, 0x21, 0x32, 0x36, 0x37, 0x40, 0x46, 0x4A, 0x4D, 0x53, 0x69 —
+>   complex handlers without obvious 1:1 EX_ mappings. Some may be fused/custom RL opcodes.
+> * 0x3B, 0x43, 0x5A — share the 8-byte-leaf handler with 0x39 (NameConst). May be
+>   ObjectConst/InstanceDelegate variants.
+> * Decompile-side issues (statement run-on, operator precedence) blocked on remaining
+>   token-map gaps.
 
 Notes on reverse-engineering the current RL `UStruct::SerializeExpr` byte mapping. Captures findings from the
 session that pulled fresh `D:\Games\rocketleague\TAGame\CookedPCConsole\*.upk` files into
