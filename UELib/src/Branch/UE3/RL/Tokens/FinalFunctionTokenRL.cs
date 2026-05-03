@@ -80,7 +80,23 @@ public class FinalFunctionTokenRL : UStruct.UByteCodeDecompiler.FinalFunctionTok
             return DecompileCall($"/* unresolved final function: {Function.Name} */");
         }
 
-        string output = base.Decompile();
+        // Wrap base.Decompile in narrow NRE/AOOR catch — inside its body, the super-call branch
+        // dereferences `Decompiler._Container.Outer` (cast to UField) which can be null in cooked
+        // packages even when our explicit Function.Outer guard above passes; the AOOR path comes
+        // from sub-token recursion that escapes DecompileNext/DecompileParms.
+        string output;
+        try
+        {
+            output = base.Decompile();
+        }
+        catch (NullReferenceException)
+        {
+            return DecompileCall($"/* base-decomp NRE: {Function.Name} */");
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return DecompileCall($"/* base-decomp AOOR: {Function.Name} */");
+        }
 
         if (FunctionTokenMap.TryGetValue(Function.Name, out var tokenType))
         {
