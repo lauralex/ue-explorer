@@ -557,16 +557,23 @@ Final survey numbers, all standalone (no preloads, no NTL file):
 
 |          | functions | fully clean | %     | __NFUN_ refs |
 |----------|-----------|-------------|-------|--------------|
-| Engine   | 4,725     | 4,598       | 97.3% | 47           |
-| TAGame   | 16,348    | 15,430      | 94.4% | 490          |
-| ProjectX | 3,965     | 3,811       | 96.1% | 55           |
-| total    | 25,038    | 23,839      | 95.2% | 592          |
+| Engine   | 4,725     | 4,642       | 98.2% | 0            |
+| TAGame   | 16,348    | 15,904      | 97.3% | 2            |
+| ProjectX | 3,965     | 3,862       | 97.4% | 0            |
+| total    | 25,038    | 24,408      | 97.5% | 2            |
 
 Parse-clean: 25,038 / 25,038 (100%) across all packages.
 
-The remaining `__NFUN_NNN__` placeholders are mostly index 200 (= `GNatives[200]`,
-which is the binary's "Unknown code token" error handler — unreachable script
-the binary would error on at runtime; our parser tolerates it).
+`__NFUN_NNN__` placeholders for indexes whose `GNatives[N]` resolves to the
+binary's default "Unknown code token" error handler are now suppressed at parse
+time (`RocketLeagueUnknownNatives` covers the 3,982 such indexes via 33
+compressed ranges; both `ChainedNativeDispatcherTokenRL` and
+`ExAlternativeExtendedNativeFunctionTokenRL` consult it and emit
+`NothingToken` instead of a `NativeFunctionToken` for those calls). The two
+residual TAGame `__NFUN_` refs are at indexes 503 and 509 — real natives in
+GNatives but their function pointers don't have matching `UObjectexec*`-style
+name strings in the binary's registration tables (likely class-method
+registrations through a different mechanism).
 
 ## What this does NOT fix
 
