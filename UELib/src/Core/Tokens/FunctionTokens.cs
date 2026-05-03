@@ -335,6 +335,52 @@ namespace UELib.Core
             {
                 public NativeTableItem NativeItem;
 
+                // Cross-package cache of native index → UFunction name. Native indexes are global
+                // across all script packages (a native at index N has the same name everywhere),
+                // so when one package's NTL doesn't have the entry, we look in the merged map of
+                // every UnrealPackage we've ever decompile-touched. Engine.upk declares ~44
+                // natives, Core.upk ~161; together they cover most of the non-extended natives RL
+                // bytecode references.
+                private static readonly System.Collections.Generic.Dictionary<ushort, string> s_globalNativeNames = new();
+                private static readonly System.Collections.Generic.HashSet<UnrealPackage> s_indexedPackages = new();
+                private static readonly object s_nativeNamesLock = new();
+
+                /// <summary>
+                /// Index every UFunction with NativeToken != 0 from <paramref name="pkg"/> into the
+                /// process-global native-name cache. Called automatically the first time a token
+                /// from <paramref name="pkg"/> hits the resolution fallback, but loaders (MCP,
+                /// Repro tool) can also call this eagerly after loading auxiliary packages
+                /// (Core/Engine) so that native names declared there can be picked up by decompile
+                /// calls on a different package.
+                /// </summary>
+                public static void IndexPackageNatives(UnrealPackage pkg)
+                {
+                    if (pkg == null) return;
+                    lock (s_nativeNamesLock)
+                    {
+                        if (!s_indexedPackages.Add(pkg)) return;
+                        foreach (var obj in pkg.Objects)
+                        {
+                            if (obj is UFunction fn && fn.NativeToken != 0)
+                            {
+                                // Don't overwrite — first registration wins. Conflicting names
+                                // would be a mismatched-build symptom worth surfacing rather than
+                                // silently masking.
+                                s_globalNativeNames.TryAdd(fn.NativeToken, fn.Name.ToString());
+                            }
+                        }
+                    }
+                }
+
+                private string ResolveNameFromPackage(ushort index)
+                {
+                    IndexPackageNatives(Package);
+                    lock (s_nativeNamesLock)
+                    {
+                        return s_globalNativeNames.TryGetValue(index, out var name) ? name : null;
+                    }
+                }
+
                 public override void Deserialize(IUnrealStream stream)
                 {
                     DeserializeCall(stream);
@@ -352,27 +398,38 @@ namespace UELib.Core
                         return fallback;
                     }
 
+                    // If the NTL gave us a generated placeholder ("__NFUN_NNN__"), try to upgrade
+                    // to the real name by looking it up against any UFunction in the loaded package
+                    // with a matching NativeToken. Catches script-declared natives (Engine.upk
+                    // declares ~44, Core.upk ~161) without needing a refreshed .NTL file.
+                    string displayName = NativeItem.Name;
+                    if (displayName != null && displayName.StartsWith("__NFUN_", System.StringComparison.Ordinal))
+                    {
+                        string resolved = ResolveNameFromPackage((ushort)NativeItem.ByteToken);
+                        if (resolved != null) displayName = resolved;
+                    }
+
                     string output;
                     switch (NativeItem.Type)
                     {
                         case FunctionType.Function:
-                            output = DecompileCall(NativeItem.Name);
+                            output = DecompileCall(displayName);
                             break;
 
                         case FunctionType.Operator:
-                            output = DecompileOperator(NativeItem.Name);
+                            output = DecompileOperator(displayName);
                             break;
 
                         case FunctionType.PostOperator:
-                            output = DecompilePostOperator(NativeItem.Name);
+                            output = DecompilePostOperator(displayName);
                             break;
 
                         case FunctionType.PreOperator:
-                            output = DecompilePreOperator(NativeItem.Name);
+                            output = DecompilePreOperator(displayName);
                             break;
 
                         default:
-                            output = DecompileCall(NativeItem.Name);
+                            output = DecompileCall(displayName);
                             break;
                     }
 
