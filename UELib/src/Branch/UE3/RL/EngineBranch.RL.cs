@@ -241,6 +241,12 @@ namespace UELib.Branch.UE3.RL
                 { 0x7F, typeof(ChainedNativeDispatcherTokenRL) },
                 { 0x82, typeof(AndTokenRL) },
                 { 0x84, typeof(OrTokenRL) },
+                // 0xC8: GNatives[200] resolves to the "Unknown code token" default error handler
+                // — i.e. there is no real native at index 200 in this RL binary. Treating byte
+                // 0xC8 as a native call with variadic args generated __NFUN_200__(...) ghost
+                // calls in ~46 functions in Engine alone. Mapping to NothingToken drops the
+                // ghost calls without affecting parse-cleanness (4725/4725 still parse clean).
+                { 0xC8, typeof(NothingToken) },
             };
 
             return tokenMap;
