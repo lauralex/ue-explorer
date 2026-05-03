@@ -42,7 +42,7 @@ namespace UELib.Branch.UE3.RL
                 { 0x0C, typeof(EventSubscribeToken) },
                 { 0x0D, typeof(UnresolvedToken) },
                 { 0x0E, typeof(IteratorNextToken) },
-                { 0x0F, typeof(UnresolvedToken) },
+                { 0x0F, typeof(FinalFunctionTokenRL) }, // experimental: new-build replacement for 0x38 super-call shape; see RL_OPCODE_ANALYSIS.md
                 { 0x10, typeof(ExtendedNativeFunctionToken) },
                 { 0x11, typeof(ContextToken) },
                 { 0x12, typeof(EatReturnValueToken) },
@@ -56,7 +56,7 @@ namespace UELib.Branch.UE3.RL
                 { 0x1A, typeof(InstanceVariableToken) },
                 { 0x1B, typeof(MetaClassCastToken) },
                 { 0x1C, typeof(RotationConstToken) },
-                { 0x1D, typeof(UnresolvedToken) },
+                { 0x1D, typeof(BoolVariableToken) }, // experimental: 1-sub-token wrapping shape inferred from 1D-1D self-pair frequency; see RL_OPCODE_ANALYSIS.md
                 { 0x1E, typeof(NothingToken) },
                 { 0x1F, typeof(LetBoolToken) },
                 { 0x20, typeof(ReturnToken) },

@@ -8,6 +8,26 @@ This is the **Rocket League fork** of [UE Explorer](https://github.com/UE-Explor
 
 RL packages are encrypted; UELib does not decrypt them. They must first be processed with [RLUPKTool](https://github.com/AltimorTASDK/RLUPKTool) before being opened.
 
+## Test packages — version pitfall
+
+When verifying token-map changes against actual bytecode, the `.upk` files **must come from the same RL build** as whatever binary is open in IDA / being reverse-engineered. RL rotates its opcode permutation across patches, so a SerializeExpr in the current binary can dispatch byte `0x3E` as EndFunctionParms while older `.upk` files on disk still emit `0x4C` for the same role. A version mismatch silently invalidates every shape inference made from the binary.
+
+To produce a fresh, version-matched fixture set:
+
+```pwsh
+# 1. Copy the canonical script packages (TAGame, Core, ProjectX, Engine, IpDrv, GFxUI,
+#    GuidCache, Startup, WinDrv) from the live install:
+Copy-Item "D:\Games\rocketleague\TAGame\CookedPCConsole\TAGame.upk" `
+          "C:\Users\Authority\Desktop\RE stuff\rldecrypted\absolutelynewupks\"
+# (repeat for each package)
+
+# 2. Decrypt each in place — RLUPKTool writes a new decrypted file alongside the input:
+& "C:\Users\Authority\Desktop\RE stuff\rldecrypted\RLUPKTool.exe" `
+  "C:\Users\Authority\Desktop\RE stuff\rldecrypted\absolutelynewupks\TAGame.upk"
+```
+
+Then load the **decrypted** output via the uelib MCP (`mcp__uelib__load_package` with `build_target: "RocketLeague"`) and disassemble. Older fixtures under `rldecrypted\`, `rldecrypted\upkbackup\`, `rldecrypted\newupks\`, `rldecrypted\newupks2\` are from earlier RL versions and should not be used to validate work derived from a newer binary.
+
 ## Solution layout
 
 `UE Explorer.sln` contains:
