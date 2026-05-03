@@ -414,6 +414,14 @@ namespace UELib.Core
                             // Seek to jump destination
                         }
 
+                        // Bounds-check: if CodeOffset is past the last token's Position (e.g.
+                        // truncated function body or an if jumping to the closing brace), `i`
+                        // walks off the end. Skip the if-else detection in that case.
+                        if (i <= 0 || i >= Decompiler.DeserializedTokens.Count)
+                        {
+                            goto addNest;
+                        }
+
                         var prevToken = Decompiler.DeserializedTokens[i - 1];
                         var elseStartToken = Decompiler.DeserializedTokens[i];
 
@@ -454,6 +462,7 @@ namespace UELib.Core
                         }
                     }
 
+                addNest:
                     // Initialize Nester if null
                     Decompiler._Nester ??= new NestManager { Decompiler = Decompiler };
 
@@ -654,8 +663,12 @@ namespace UELib.Core
                     else
                     {
                         output = $"foreach {DecompileNext()}({DecompileNext()})";
-                        // Skip Index param
-                        NextToken();
+                        // Skip Index param — bounds-checked, the index sub-token may not be in the
+                        // list when bytecode parse recovery has shortened the function body.
+                        if (Decompiler.CurrentTokenIndex + 1 < Decompiler.DeserializedTokens.Count)
+                        {
+                            NextToken();
+                        }
                     }
 
                     Decompiler._CanAddSemicolon = false;

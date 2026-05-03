@@ -33,11 +33,23 @@ namespace UELib.Core
 
             public Token NextToken => DeserializedTokens[++CurrentTokenIndex];
 
-            public Token PeekToken => DeserializedTokens[CurrentTokenIndex + 1];
+            // PeekToken / PreviousToken / CurrentToken return null at out-of-bounds positions
+            // instead of throwing ArgumentOutOfRangeException. Callers use these for `is X` type
+            // checks, so a null return makes the check naturally fail without aborting the
+            // enclosing decompile via an unhandled exception. (NextToken still throws because it
+            // mutates state — bounds-checking it would conflict with caller loop patterns; the
+            // CLAUDE.md docs spell out why.)
+            public Token PeekToken => CurrentTokenIndex + 1 < DeserializedTokens.Count
+                ? DeserializedTokens[CurrentTokenIndex + 1]
+                : null;
 
-            public Token PreviousToken => DeserializedTokens[CurrentTokenIndex - 1];
+            public Token PreviousToken => CurrentTokenIndex > 0
+                ? DeserializedTokens[CurrentTokenIndex - 1]
+                : null;
 
-            public Token CurrentToken => DeserializedTokens[CurrentTokenIndex];
+            public Token CurrentToken => CurrentTokenIndex >= 0 && CurrentTokenIndex < DeserializedTokens.Count
+                ? DeserializedTokens[CurrentTokenIndex]
+                : null;
 
             public UByteCodeDecompiler(UStruct container)
             {
