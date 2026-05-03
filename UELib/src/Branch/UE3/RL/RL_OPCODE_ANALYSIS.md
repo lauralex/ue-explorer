@@ -381,6 +381,24 @@ candidates with the same shape both produce the top score, picking between them 
 a guess; they have different decompile-output text but identical parse structure.
 The picks above prefer the simplest-leaf or most-script-plausible candidate.
 
+## 0x0F (and 0x38) shape — extra mandatory byte after UFunction*
+
+After locking in the primary token map, decompile output of `Pawn.PostBeginPlay`
+showed `super.PostBeginPlay(0); break;` — the spurious `(0)` is wrong (PostBeginPlay
+takes no args). Stem: 0x0F was using the baseline EX_FinalFunction shape
+(`op + UFunction* + variadic + EndFunctionParms`), but RL's shape is actually
+`op + UFunction* + 1 mandatory byte + variadic + EndFunctionParms + DEBUG`. The
+mandatory byte's purpose isn't known — likely an arg count, a flag, or a vtable
+hint that the runtime consumes but isn't part of visible script semantics.
+
+Verified by writing a `FinalFunctionTokenWithSkipRL` experimental variant that
+consumed one extra byte after `ReadObject<UFunction>()`; output went from
+`super.PostBeginPlay(0); break;` to `super.PostBeginPlay(); break;`. Both shapes
+score 100% parse-clean across Engine/TAGame/ProjectX, so the empirical sweep
+can't discriminate by score alone — the skip-variant was picked because it gives
+correct decompile output. Commit `6b935e7` folds the skip into
+`FinalFunctionTokenRL` itself so both 0x0F and 0x38 use the new shape.
+
 ## What this does NOT fix
 
 - **Decompile output quality.** Per-function structure is sound, but specific token
