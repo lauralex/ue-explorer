@@ -555,14 +555,34 @@ Enough to render readable output even if only one RL package is loaded.
 
 Final survey numbers, all standalone (no preloads, no NTL file):
 
-|          | functions | fully clean | %     | __NFUN_ refs |
-|----------|-----------|-------------|-------|--------------|
-| Engine   | 4,725     | 4,642       | 98.2% | 0            |
-| TAGame   | 16,348    | 15,904      | 97.3% | 2            |
-| ProjectX | 3,965     | 3,862       | 97.4% | 0            |
-| total    | 25,038    | 24,408      | 97.5% | 2            |
+|          | functions | fully clean | %     | __NFUN_ refs | stmt-error |
+|----------|-----------|-------------|-------|--------------|------------|
+| Engine   | 4,725     | 4,719       | 99.87% | 0           |  6         |
+| TAGame   | 16,348    | 16,323      | 99.85% | 2           | 23         |
+| ProjectX | 3,965     | 3,953       | 99.70% | 0           | 12         |
+| total    | 25,038    | 24,995      | 99.83% | 2           | 41         |
 
 Parse-clean: 25,038 / 25,038 (100%) across all packages.
+
+Decompile resilience added in this pass:
+
+- `Decompiler.PeekToken` / `PreviousToken` / `CurrentToken` return null when
+  out-of-bounds (callers use them in `is X` type checks; null cleanly fails).
+- `DecompileParms` wraps each sub-token's `Decompile()` in NRE/AOOR catch.
+- `DecompileNext` wraps the recursed `Decompile()` (NRE/AOOR scoped).
+- `PrecedenceToken` / `SafeDecompile` helper for operator paths.
+- `JumpIfNotToken`'s if-else seek-loop bounds-checks before reading
+  `prevToken`/`elseStartToken`.
+- `DynamicArrayIteratorToken`'s "Skip Index param" `NextToken()` is bounds-checked.
+- `FinalFunctionTokenRL.Decompile` wraps `base.Decompile` in NRE/AOOR catch.
+- `DecompileNests` resolves tied-position Case→Case mismatches by walking the
+  nest chain instead of emitting a `MISMATCHING REMOVE` warning.
+- `AssertSkipCurrentToken<T>` bounds-checks before `NextToken`.
+- `SkipFunctionTokenRL.Decompile` uses `while` with bounds-check instead of
+  `do { skip = NextToken() } while`.
+- `ChainedNativeDispatcherTokenRL` and `ExAlternativeExtendedNativeFunctionTokenRL`
+  emit `NothingToken` for indexes in `RocketLeagueUnknownNatives.Set` (3,982
+  GNatives entries that resolve to the binary's default error handler).
 
 `__NFUN_NNN__` placeholders for indexes whose `GNatives[N]` resolves to the
 binary's default "Unknown code token" error handler are now suppressed at parse
