@@ -449,28 +449,47 @@ After loading Core+Engine, every call site to a native at index ≤ 3971 resolve
 Pawn.PostBeginPlay → `super.PostBeginPlay()`, FastTrace's body → `Divide_IntInt`,
 `InStr`, `IsA`, `Round`, etc.
 
-**What's still missing — extended natives (≥ 5000).** RL bytecode references
-indexes like 5019, 5113, 5500. None of these are declared as `UFunction`s in any
-script package — they're pure engine intrinsics. The corresponding C++ exec
-functions exist in `RocketLeague_Dumped_latest.exe` (e.g. the binary contains
-`UObjectexecGetTypedOuter`, `AActorexecFastTrace` strings followed by their
-function pointers in registration tables at `0x7ff6cf17fd80` etc.), but the
-registration tables are pure `(name_string_ptr, function_ptr)` pairs — the
-**native index isn't stored alongside**. UE3 assigns indexes at runtime by
-matching script-declared `native(NNN)` decls against registered names.
+**What's still missing — extended natives (UELib's `__NFUN_5000+__`).**
 
-To finish closing the gap two paths exist, both binary RE work outside this
-library:
+Binary RE update: `GNatives` is at `0x7FF6CF2AA580` in
+`RocketLeague_Dumped_latest.exe`. Indexes 0..255 are the bytecode-opcode handlers
+(EX_*) and entries 256..4415 are the actual native function pointers. Bytes
+`0x70..0x7F` in the script are the chained native dispatchers — each one reads a
+sub-byte and dispatches to the native at index `(byte − 0x70) × 256 + sub_byte`,
+covering the full 0..4095 range. (`0x80..0x8F` host individual operator/inline
+natives, not chained.)
 
-1. Find the `UFunction::Bind` (or RL equivalent) that walks both the registration
-   tables and the engine class layouts, and reverse the ordering convention to
-   recover the (name → index) mapping.
-2. Find any code site that calls `GNatives[NNN](…)` directly with a literal NNN
-   in the 5000+ range, and walk back from there.
+**The gotcha:** UELib's `ExtendedNativeFunctionToken` (script byte `0x10`),
+`AlternativeExtendedNativeFunctionToken` (`0x5E`), and
+`ExAlternativeExtendedNativeFunctionTokenRL` (`0x71`) all compute their native
+index as `sub_byte + 5000` (or `+ 6000`). These constants don't correspond to
+anything in the binary's `GNatives` — entries 5000+ are zero. The binary
+*itself* dispatches script byte `0x10` as the "Execution beyond end of script"
+error handler, not as an extended-native dispatcher. This means the
+`__NFUN_5000+__` call sites our parser produces are reading bytes from positions
+the binary would never execute (post-EndOfScript regions, dead code, or possibly
+embedded data that our parser walked past). They're not reachable native calls;
+they're parser artifacts.
 
-Until that's done, ~30–40 % of decompile output for any script function still
-contains `__NFUN_NNN__` placeholders for these intrinsic calls — the function
-structure renders correctly, only the call name is missing.
+So the resolution is structural, not just naming: the right fix would be to
+either (a) drop these "ghost native" call sites from the decompile output, or
+(b) figure out the actual encoding RL uses for genuinely-extended natives (if
+any), which probably requires identifying a byte in script that the binary's
+dispatch table treats as a chained native dispatcher beyond 0x7F. The binary's
+0x80–0x8F handlers do reference index ranges 0+ (chained), so RL might be
+piggybacking on those for additional natives — but UELib's `0x10`/`0x5E`/`0x71`
+mappings clearly aren't producing real native calls.
+
+**Binary-extracted fallback names.** What we *did* extract from the binary is a
+hardcoded `RocketLeagueNativeNames.Map` of 78 (index, name) pairs covering
+indexes 256–3971 — pulled from the registration tables in `.data` cross-
+referenced against `GNatives`. This loads automatically for RL packages so
+`Sleep`, `FastTrace`, `MoveTo`, `AllActors`, etc. resolve even when the user
+loads only TAGame without preloading Engine/Core. It overlaps heavily with what
+loaded `UFunction.NativeToken`s already provide; the new value is the operator
+natives (`Multiply_VectorVector`, `Add_QuatQuat`, `MirrorVectorByNormal`,
+`RotRand`, `LessEqual_StrStr`, etc.) that don't always appear in script
+declarations.
 
 ## Decompile resilience
 

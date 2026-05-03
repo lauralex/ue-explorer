@@ -378,6 +378,16 @@ namespace UELib.Core
                                 s_globalNativeNames.TryAdd(fn.NativeToken, fn.Name.ToString());
                             }
                         }
+                        // For RL specifically, fall back to the binary-extracted GNatives map. This
+                        // catches cases where the user loaded a non-script-declaring package (e.g.
+                        // TAGame) without preloading Engine/Core. Loaded UFunction names always win.
+                        if (pkg.Build?.Name == UnrealPackage.GameBuild.BuildName.RocketLeague)
+                        {
+                            foreach (var kv in UELib.Branch.UE3.RL.RocketLeagueNativeNames.Map)
+                            {
+                                s_globalNativeNames.TryAdd(kv.Key, kv.Value);
+                            }
+                        }
                     }
                 }
 
