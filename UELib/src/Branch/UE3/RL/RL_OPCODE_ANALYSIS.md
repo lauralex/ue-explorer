@@ -399,6 +399,32 @@ can't discriminate by score alone — the skip-variant was picked because it giv
 correct decompile output. Commit `6b935e7` folds the skip into
 `FinalFunctionTokenRL` itself so both 0x0F and 0x38 use the new shape.
 
+## 0x49 — `End:0x2866` smoking gun
+
+`0x49` is currently mapped to `FilterEditorOnlyToken` (inherited from baseline UE3
+where this opcode lives at `0x5A`, but the RL position was set in commit `d48a2704`
+without empirical confirmation). `FilterEditorOnlyToken : JumpToken` reads a 16-bit
+`CodeOffset` immediately after the opcode byte, which it then uses to open a Scope
+nest spanning `[Position, CodeOffset)`.
+
+Symptom: every `0x49` in `SkeletalMeshComponent.PlayParticleEffect` (and many other
+functions in `Engine_decrypted.upk`) decompiles with `// End:0x2866`. `0x2866` is
+`66 28` little-endian — i.e. the bytes immediately after the `0x49` opcode are
+`0x66 0x28`, which under the current map are `SelfToken` followed by
+`LocalVariableToken`. The reader is consuming two opcode bytes as if they were a
+code offset, giving a nonsense scope endpoint far past function-end. NestManager
+then fails to close the scope, and we see cascading "MISMATCHING REMOVE,
+tried Case got Type:Scope Position:0x..." warnings in the decompile output.
+
+To confirm the wrong shape: `--score-mapping 0x49:NothingToken` parses 4725/4725
+functions clean with 0 unresolved/0 bad — i.e. the byte stream is consistent with
+`0x49` being a 1-byte leaf, not a 3-byte JumpToken-style token. Either NothingToken
+(silent leaf) or some still-unidentified single-byte semantics fits the wire format.
+
+Not fixed yet (see "What this does NOT fix" below) — the right answer needs another
+look at the binary's case `0x49` body, since both candidate shapes parse cleanly and
+we can't distinguish purely empirically.
+
 ## What this does NOT fix
 
 - **Decompile output quality.** Per-function structure is sound, but specific token
