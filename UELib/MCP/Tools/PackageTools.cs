@@ -59,6 +59,12 @@ public sealed class PackageTools(PackageSessionManager sessions)
                     package.Dispose();
                     throw McpErrors.Wrap("InitializePackage", ex);
                 }
+
+                // Add this package's UFunctions to the global native-name index so any subsequent
+                // decompile that hits a __NFUN_NNN__ placeholder can resolve it against natives
+                // declared here. RL natives are split across Engine.upk + Core.upk; loading both
+                // gives full coverage of non-extended natives.
+                UStruct.UByteCodeDecompiler.NativeFunctionToken.IndexPackageNatives(package);
             }
 
             string handle = sessions.Add(path, package);
