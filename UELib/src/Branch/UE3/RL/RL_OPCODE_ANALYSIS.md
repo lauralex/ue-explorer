@@ -1,5 +1,31 @@
 # Rocket League opcode analysis
 
+> **HONEST STATUS NOTE (READ THIS FIRST)**
+>
+> The numbers further down this file ("99.83% fully clean", parse-clean rates) measure
+> *absence of exceptions during decompile*, not *correctness of decompile output*. The
+> token map under `EngineBranchRL.BuildTokenMap` was built via empirical
+> `--score-mapping` shape inference: pick a token type whose
+> Deserialize consumes the right number of bytes per opcode without throwing. That
+> produces structurally-consistent parses but the byte→token *meanings* are wrong for
+> many bytes.
+>
+> Real-world consequence: decompile output for non-trivial functions (Pawn.Destroyed,
+> PlayerController.PlayerTick, CustomMatchSettingsSave_TA.GetSettings) renders as
+> nested-paren gibberish that uses real native names (Add_IntInt, Cos, super.X())
+> but is not valid UnrealScript. Statement boundaries collapse into single
+> giant expressions; if/else and switch/case structures are scrambled; left-side of
+> assignments is often empty.
+>
+> What works: function signatures (from UFunction metadata, not bytecode),
+> native-name resolution (binary-extracted, accurate), super-call patterns when
+> Function.Outer resolves, default-property blocks for simple classes, the lower-level
+> resilience that prevents exceptions from killing the whole decompile.
+>
+> What doesn't: any expression-level token interpretation that depends on the wrong
+> shape choice — which is most of bytes 0x00..0x6F. See "Path to a working
+> decompiler" section below.
+
 Notes on reverse-engineering the current RL `UStruct::SerializeExpr` byte mapping. Captures findings from the
 session that pulled fresh `D:\Games\rocketleague\TAGame\CookedPCConsole\*.upk` files into
 `C:\Users\Authority\Desktop\RE stuff\rldecrypted\absolutelynewupks\`, decrypted them with `RLUPKTool.exe`,
@@ -7,6 +33,83 @@ and surveyed them against the current `RocketLeague_Dumped_latest.exe` opened in
 
 This document is a working note, not a spec. Take everything below as "best evidence so far" and re-verify
 before changing live code.
+
+## Path to a working decompiler — what's needed
+
+The fundamental issue: UELib's RL token map matches BYTE COUNTS but not BYTE MEANINGS.
+To fix it, every primary opcode (0x00..0x6F) needs to be ground-truthed against the
+actual handler in the binary's runtime dispatch table. Reference points already in
+this file:
+
+- **Bytecode dispatch table**: `0x7FF6CF2AA580` in `RocketLeague_Dumped_latest.exe`
+  (loaded in IDA at handle `RocketLeague_Dumped_latest.exe.i64`). Indexed by script
+  byte 0..255. Entries 0..0x6F are the primary opcode handlers. Entries 0x70..0x7F
+  are the chained native dispatchers (each indexes a 256-entry GNatives slice).
+  Entries 0x80..0xFF are direct GNatives operator/inline natives.
+- **GNatives**: same address (the dispatch table IS GNatives). Indexes 256..4415
+  are the actual native function pointers.
+- **`RocketLeagueNativeNames.Map`** (UELib/src/Branch/UE3/RL/): 207 binary-verified
+  (index, name) pairs.
+- **`RocketLeagueUnknownNatives.Set`**: 3,982 indexes whose GNatives entry is the
+  default error handler (`sub_7FF6CD31ACB0`) — nothing real to look up.
+
+The work needed:
+
+1. **Walk dispatch table entries 0x00..0x6F.** For each entry:
+   - Open the handler function in IDA (single-instruction wrappers are easy; complex
+     handlers need their actual sub-byte/sub-token reads counted).
+   - Determine: how many bytes does it consume from the script stream, in what order
+     (`stream.ReadByte()`, `stream.ReadObject<UObject*>()` = 8 bytes, `ReadName()` = 8
+     bytes, recursive sub-token dispatch via `funcs_7FF6CD28592F[v]`, etc.)?
+   - Match the wire format to one of UELib's known token classes, or write a new RL-
+     specific token if no baseline UE3 type matches.
+   - Update `EngineBranchRL.BuildTokenMap` with the verified mapping and replace the
+     "tied across many candidates" comment with "verified at handler 0x7FF6CD......".
+2. **Update or replace tokens whose semantics are wrong.** Score-mapping-derived
+   mappings flagged as "tied" or "picked simplest leaf" in the existing inline
+   comments are the most suspicious. List in Task #31.
+3. **Validate output against a reference.** Without a known-good decompile to diff
+   against, semantic correctness is unprovable. Options in Task #34 — most likely
+   start with UE3 SDK source for inherited functions (Object.uc, Actor.uc,
+   GameInfo.uc, PlayerController.uc).
+4. **Remove resilience-net masking** once the underlying parse is right (Task #37).
+   The current NRE/AOOR catches mask actual semantic bugs and need to be tightened
+   or removed once they're no longer needed.
+5. **Statement boundary, operator precedence, switch/case rendering** (Tasks #32,
+   #33, #35, #36). Each is a separate decompile-side issue that compounds on top of
+   the token-map issue. Address after the token map is settled.
+
+## What is verified correct (don't break these)
+
+- `0x0F` = `FinalFunctionTokenRL` with the +1 mandatory skip-byte after
+  `UFunction*` — verified by Pawn.PostBeginPlay's `super.PostBeginPlay()` correctly
+  rendering without spurious `(0)`. See section "0x0F (and 0x38) shape".
+- `0x70..0x7F` chained dispatchers + `RocketLeagueNativeNames` cover non-extended
+  native indexes 0..4095. Verified by Sleep, FastTrace, Trace, MoveTo etc. resolving
+  correctly in call sites.
+- `0x80..0xFF` direct natives (Add_IntInt, Cos, Min, etc.) — these match the
+  binary's GNatives entries directly. Verified by 127/128 of those entries having a
+  real exec function pointer, none default-handler.
+- `0xC8` = NothingToken (GNatives[200] is unmapped — no real native at index 200).
+- `RocketLeagueUnknownNatives` set suppression — eliminates ghost native call sites
+  for the 3,982 indexes whose GNatives entry is the default error handler.
+
+## What is suspect (verify against binary before trusting)
+
+Most of `EngineBranchRL.BuildTokenMap` for bytes 0x00..0x6F. Specifically anything
+with comments like:
+
+- "tied across many candidates"
+- "picked the simplest leaf"
+- "all candidates tied"
+- "best fit; ... shape"
+- "most common case in scripted code"
+- "BadToken in baseline RL"
+
+Each of those is a guess. The score function that picked them was measuring "no
+parse error" not "matches the binary's actual handler". They probably consume the
+right number of bytes — but the resulting token TYPE is often wrong, so sub-tokens
+get reinterpreted and statements collapse.
 
 ## TL;DR
 
