@@ -850,13 +850,29 @@ namespace UELib.Core
             {
                 var output = string.Empty;
 
+                // If the cursor walked past the end of the token list (which can happen after
+                // central-loop recovery from a token deserialize exception), treat the nest
+                // formatting as "close everything remaining" instead of throwing on CurrentToken.
+                bool cursorExhausted =
+                    CurrentTokenIndex < 0 || CurrentTokenIndex >= DeserializedTokens.Count;
+                int currentPosition = cursorExhausted
+                    ? int.MaxValue
+                    : CurrentToken.Position;
+                int currentEndPosition = cursorExhausted
+                    ? int.MaxValue
+                    : CurrentToken.Position + CurrentToken.Size;
+                if (cursorExhausted)
+                {
+                    outputAllRemainingNests = true;
+                }
+
                 // Give { priority hence separated loops
                 for (var i = 0; i < _Nester.Nests.Count; ++i)
                 {
                     if (!(_Nester.Nests[i] is NestManager.NestBegin))
                         continue;
 
-                    if (_Nester.Nests[i].IsPastOffset((int)CurrentToken.Position) || outputAllRemainingNests)
+                    if (_Nester.Nests[i].IsPastOffset(currentPosition) || outputAllRemainingNests)
                     {
                         output += _Nester.Nests[i].Decompile();
                         UDecompilingState.AddTab();
@@ -869,7 +885,7 @@ namespace UELib.Core
                 for (int i = _Nester.Nests.Count - 1; i >= 0; i--)
                     if (_Nester.Nests[i] is NestManager.NestEnd nestEnd
                         && (outputAllRemainingNests ||
-                            nestEnd.IsPastOffset((int)CurrentToken.Position + CurrentToken.Size)))
+                            nestEnd.IsPastOffset(currentEndPosition)))
                     {
                         var topOfStack = _NestChain[_NestChain.Count - 1];
                         if (topOfStack.Type == NestManager.Nest.NestType.Default &&
