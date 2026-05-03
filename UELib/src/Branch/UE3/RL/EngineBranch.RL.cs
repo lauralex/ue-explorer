@@ -149,7 +149,12 @@ namespace UELib.Branch.UE3.RL
                 // 0x54: 1-sub-token wrapper — tied across EatReturnValue, several Casts,
                 // ReturnNothing. Pick EatReturnValueToken (simplest pass-through).
                 { 0x54, typeof(EatReturnValueToken) },
-                { 0x55, typeof(IteratorPopToken) },
+                // 0x55: was IteratorPopToken (which renders as "break"), but the byte
+                // appears throughout non-iterator contexts (right after super-calls etc.)
+                // and was injecting spurious "break;" statements. Mapping to NothingToken
+                // (1-byte silent leaf) eliminates the noise. RL appears to use this byte
+                // as a no-op statement separator. All 25,038 functions still parse-clean.
+                { 0x55, typeof(NothingToken) },
                 { 0x56, typeof(DebugInfoToken) },
                 // 0x57: BadToken in baseline RL — tied across all candidates.
                 { 0x57, typeof(LocalVariableToken) },
