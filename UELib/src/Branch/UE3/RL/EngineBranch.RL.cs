@@ -217,7 +217,28 @@ namespace UELib.Branch.UE3.RL
                 { 0x6F, typeof(ConditionalToken) },
 
                 // Special RL Native tokens
+                // Bytes 0x70..0x7F are the chained native-dispatcher bytes — each reads a sub_byte
+                // and indexes GNatives[(byte − 0x70) × 256 + sub_byte], covering native indexes
+                // 0..4095. Without these mappings the parser would treat each as a leaf native at
+                // index 0x70..0x7F and emit __NFUN_112__ etc. placeholders. 0x71 keeps its existing
+                // RL-specific token (which adds an iterator dispatch sub-table); the rest use the
+                // generic ChainedNativeDispatcherTokenRL.
+                { 0x70, typeof(ChainedNativeDispatcherTokenRL) },
                 { 0x71, typeof(ExAlternativeExtendedNativeFunctionTokenRL) },
+                { 0x72, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x73, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x74, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x75, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x76, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x77, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x78, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x79, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7A, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7B, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7C, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7D, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7E, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7F, typeof(ChainedNativeDispatcherTokenRL) },
                 { 0x82, typeof(AndTokenRL) },
                 { 0x84, typeof(OrTokenRL) },
             };
