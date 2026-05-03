@@ -1,4 +1,5 @@
-﻿using System.Reflection;
+﻿using System;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using UELib.ObjectModel.Annotations;
 using UELib.Tokens;
@@ -60,7 +61,17 @@ namespace UELib.Core
                     var token = Decompiler.NextToken;
                     if (token is DebugInfoToken) goto tryNext;
 
-                    return token.Decompile();
+                    // Wrap sub-token decompile so a leaf NRE/AOOR (typically from a
+                    // null UObject or bad cursor inside the sub-token's body) only loses the sub-
+                    // expression, not the entire enclosing statement.
+                    try
+                    {
+                        return token.Decompile();
+                    }
+                    catch (Exception ex)
+                    {
+                        return $"/*<exc {ex.GetType().Name}>*/";
+                    }
                 }
 
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
