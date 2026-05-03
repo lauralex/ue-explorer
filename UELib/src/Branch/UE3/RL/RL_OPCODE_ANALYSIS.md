@@ -17,56 +17,91 @@
 >
 > ### Verified RL byte→EX_ mapping (high-confidence, applied this session)
 >
-> | RL byte | EX_ name              | Binary fingerprint                                       |
-> |---------|-----------------------|----------------------------------------------------------|
-> | 0x05    | EX_ArrayElement       | shared handler with 0x16; dispatches 2 sub-opcodes        |
-> | 0x0B    | EX_IntConst           | reads INT (4 bytes), writes to *a3                       |
-> | 0x0F    | EX_FinalFunction      | reads 8-byte UFunction*, dispatches vtable[76]           |
-> | 0x11    | EX_StateVariable      | reads FName, walks state stack at (a2+72)                |
-> | 0x16    | EX_DynamicArrayElement | shared handler with 0x05                                |
-> | 0x1C    | EX_IntZero / EX_False | aliased: writes 0 (4-byte) — pair with 0x27              |
-> | 0x1D    | EX_Nothing            | empty stub (aliased with 0x2E)                           |
-> | 0x1F    | EX_Self               | `*a3 = a1` — pushes `this`                              |
-> | 0x23    | EX_NoObject           | `*(QWORD*)a3 = 0` — 8-byte zero                          |
-> | 0x27    | EX_False / EX_IntZero | aliased with 0x1C                                        |
-> | 0x28    | EX_Context            | sub-expr + 2 bytes + UField + type + sub-expr; "Accessed None '%s'" |
-> | 0x29    | EX_JumpIfNot          | u16 offset + sub-expr (was wrongly DynArraySort)         |
-> | 0x2A    | EX_ByteConst          | reads u8                                                 |
-> | 0x2B    | EX_IntConstByte       | reads i8 (signed variant of 0x2A)                        |
-> | 0x2E    | EX_Nothing            | aliased with 0x1D                                        |
-> | 0x2F    | EX_IntOne / EX_True   | writes 1 (aliased with 0x3A)                             |
-> | 0x38    | EX_ClassContext       | "Accessed null class context '%s'"                       |
-> | 0x39    | EX_NameConst          | 8-byte FName reader                                      |
-> | 0x3A    | EX_True / EX_IntOne   | aliased with 0x2F                                        |
-> | 0x3E    | **EX_EndFunctionParms** | variadic terminator — `Code -= 1` un-consume pattern.  |
-> |         |                       | Verified by 2 GNatives variadic-loop handlers (0x12, 0x37) checking `*Code != 0x3E` |
-> | 0x41    | EX_VirtualFunction    | FName + state-aware lookup, flag = 0                     |
-> | 0x49    | EX_LetDelegate        | 2 sub-opcodes + cleanup (delegate-replace pattern)       |
-> | 0x4C    | EX_Let / LetBool      | "Attempt to assign variable through None"                |
-> | 0x50    | EX_StringConst        | calls FString-from-cstring constructor                   |
-> | 0x51    | EX_UnicodeStringConst | calls `wcslen` on Code (UTF-16)                          |
-> | 0x55    | EX_InstanceVariable   | UProperty* + addr = `this + offset`                      |
-> | 0x57    | **EX_Switch**         | UProperty* + property type + sub-expr + case-loop with 0xFFFF terminator using `wcsicmp`/`memcmp` |
-> | 0x58    | EX_DefaultVariable    | UProperty* + object-flag check                           |
-> | 0x59    | EX_GlobalFunction     | FName + lookup with state-skip flag = 1                  |
-> | 0x5C    | EX_GotoLabel          | "GotoLabel (%s): Label not found"                        |
-> | 0x5D    | EX_Jump               | exactly `Code += 2`                                      |
-> | 0x60    | EX_VectorConst / RotationConst | reads 12 bytes (3 INTs)                         |
-> | 0x64    | EX_FloatConst         | 4-byte literal (sister to 0x0B IntConst)                 |
-> | 0x65    | EX_LocalVariable      | UProperty* + addr = `Locals[offset]`                     |
-> | 0x66    | EX_BoolVariable       | 1-sub-expr wrapper + flag clear                          |
-> | 0x6A    | EX_EmptyDelegate      | zeroes 24 bytes + constructs empty delegate              |
-> | 0x6B    | EX_PrimitiveCast      | 1 byte + dispatch into separate cast-type sub-table      |
-> | 0x6C    | EX_ReturnNothing      | "Control reached the end of non-void function"           |
+> | RL byte | EX_ name                | Binary fingerprint                                       |
+> |---------|-------------------------|----------------------------------------------------------|
+> | 0x05    | EX_ArrayElement         | shared with 0x16; 2 sub-ops + 1 byte + dispatch          |
+> | 0x06    | EX_BoolVariable         | 1-sub-expr wrapper, peeks 8 bytes for bit-mask test      |
+> | 0x0B    | EX_IntConst             | reads INT (4 bytes), writes to *a3                       |
+> | 0x0F    | EX_FinalFunction        | reads 8-byte UFunction*, dispatches vtable[76]           |
+> | 0x11    | EX_LocalOutVariable     | reads FName, walks OutParms list at (a2+72)              |
+> | 0x16    | EX_DynamicArrayElement  | shared handler with 0x05                                 |
+> | 0x1C    | EX_IntZero / EX_False   | aliased: writes 0 (4-byte) — pair with 0x27              |
+> | 0x1D    | EX_Nothing              | empty stub (aliased with 0x2E)                           |
+> | 0x1E    | **EX_ArrayElement**     | bounds-checked array index — "Accessed array '%s.%s' out of bounds (%i/%i)" |
+> | 0x1F    | EX_Self                 | `*a3 = a1` — pushes `this`                              |
+> | 0x22    | EX_Jump                 | u16 offset + `Code = ScriptStart + offset` (absolute jump) |
+> | 0x23    | EX_NoObject             | `*(QWORD*)a3 = 0` — 8-byte zero                          |
+> | 0x27    | EX_False / EX_IntZero   | aliased with 0x1C                                        |
+> | 0x28    | EX_Context              | sub-expr + 2 bytes + UField + type + sub-expr; "Accessed None '%s'" |
+> | 0x29    | EX_JumpIfNot            | u16 offset + sub-expr (was wrongly DynArraySort)         |
+> | 0x2A    | EX_ByteConst            | reads u8                                                 |
+> | 0x2B    | EX_IntConstByte         | reads i8 (signed variant of 0x2A)                        |
+> | 0x2E    | EX_Nothing              | aliased with 0x1D                                        |
+> | 0x2F    | EX_IntOne / EX_True     | writes 1 (aliased with 0x3A)                             |
+> | 0x38    | EX_ClassContext         | "Accessed null class context '%s'"                       |
+> | 0x39    | EX_NameConst            | 8-byte FName reader (also 0x3B, 0x43, 0x5A — same handler) |
+> | 0x3A    | EX_True / EX_IntOne     | aliased with 0x2F                                        |
+> | 0x3E    | **EX_EndFunctionParms** | variadic terminator — `Code -= 1` un-consume pattern    |
+> |         |                         | Verified by 2 variadic-loop handlers (0x12, 0x37) checking `*Code != 0x3E` |
+> | 0x40    | EX_DelegateFunction     | 1 byte + UProperty* + FName                              |
+> | 0x41    | EX_VirtualFunction      | FName + state-aware lookup, flag = 0                     |
+> | 0x46    | EX_LetBool              | 2-sub-expr Let-shape, no NULL cleanup                    |
+> | 0x47    | EX_EmptyParmValue       | 1-byte leaf (skipped optional arg, NOT Stop)             |
+> | 0x49    | EX_LetDelegate          | 2 sub-opcodes + cleanup (delegate-replace pattern)       |
+> | 0x4A    | EX_StructMember         | UProperty* + UStruct* + 2 bytes + sub-expr               |
+> | 0x4C    | EX_Let / LetBool        | "Attempt to assign variable through None"                |
+> | 0x50    | EX_StringConst          | calls FString-from-cstring constructor                   |
+> | 0x51    | EX_UnicodeStringConst   | calls `wcslen` on Code (UTF-16)                          |
+> | 0x55    | EX_InstanceVariable     | UProperty* + addr = `this + offset`                      |
+> | 0x57    | **EX_Switch**           | UProperty* + property type + sub-expr + case-loop with 0xFFFF terminator using `wcsicmp`/`memcmp` |
+> | 0x58    | EX_DefaultVariable      | UProperty* + object-flag check                           |
+> | 0x59    | EX_GlobalFunction       | FName + lookup with state-skip flag = 1                  |
+> | 0x5C    | EX_GotoLabel            | "GotoLabel (%s): Label not found"                        |
+> | 0x5D    | EX_Jump                 | exactly `Code += 2` (no-jump variant; possibly EX_JumpIfFilterEditorOnly) |
+> | 0x60    | EX_VectorConst / RotationConst | reads 12 bytes (3 INTs)                           |
+> | 0x64    | EX_FloatConst           | 4-byte literal (sister to 0x0B IntConst)                 |
+> | 0x65    | EX_LocalVariable        | UProperty* + addr = `Locals[offset]`                     |
+> | 0x66    | EX_BoolVariable         | 1-sub-expr wrapper + flag clear (aliased with 0x06)      |
+> | 0x6A    | EX_EmptyDelegate        | zeroes 24 bytes + constructs empty delegate              |
+> | 0x6B    | EX_PrimitiveCast        | 1 byte + dispatch into separate cast-type sub-table      |
+> | 0x6C    | EX_ReturnNothing        | "Control reached the end of non-void function"           |
 >
-> ### Still TODO (less common, complex, or disputed)
+> ### Decompile-side improvements (this session)
 >
-> * 0x06, 0x09, 0x10, 0x12, 0x21, 0x32, 0x36, 0x37, 0x40, 0x46, 0x4A, 0x4D, 0x53, 0x69 —
->   complex handlers without obvious 1:1 EX_ mappings. Some may be fused/custom RL opcodes.
-> * 0x3B, 0x43, 0x5A — share the 8-byte-leaf handler with 0x39 (NameConst). May be
->   ObjectConst/InstanceDelegate variants.
-> * Decompile-side issues (statement run-on, operator precedence) blocked on remaining
->   token-map gaps.
+> - `NativeFunctionToken` now uses three-tier resolution (StandardOperatorSymbols
+>   index map → loaded UFunction → NativeItem fallback). Renders operators as
+>   symbols (`*`, `+=`, `==`, `&&`, `@`) instead of `Multiply_FloatFloat(a, b)`
+>   function-call form. ~95-entry symbol map covers Bool/Byte/Int/Float/String/
+>   Object/Name/Vector/Rotator/Quaternion stdlib + RL-specific extra indexes.
+>   See `StandardOperatorSymbols.cs` and `RocketLeagueNativeNames.cs`.
+> - Resilience-net markers (`/*<exc NRE 0xXX TokenName>*/`) include OpCode +
+>   Token type so masked bytes are greppable for follow-up debugging.
+> - Central deserialize-loop recovery clamped to scriptSize so over-reading
+>   sub-tokens don't add orphan tokens past function end (prevents trailing
+>   `==`, `67109384`, etc. junk).
+>
+> ### Still TODO (less common, complex, or RL-fused)
+>
+> * **0x09, 0x10, 0x12, 0x21, 0x32, 0x36, 0x37, 0x4D, 0x53, 0x69** —
+>   handlers don't cleanly map to baseline EX_; some may be fused/custom RL
+>   opcodes (e.g. fused Context+VirtualFunction call). Investigation lead in
+>   `snapshots/comparison_harness.md` "Remaining bytes flagged for follow-up".
+> * **0x3B, 0x43, 0x5A** — share the 8-byte-leaf handler with 0x39 (NameConst).
+>   May be ObjectConst / InstanceDelegate / DelegateProperty variants — runtime
+>   doesn't distinguish (just pushes 8 bytes), needs the parser to render them
+>   differently.
+> * **0x20** — currently ReturnToken in our map; binary handler is the
+>   `HANDLE_OPTIONAL_DEBUG_INFO` macro (peek-byte-100 conditional consume of
+>   13 bytes). Real EX_Return byte unknown — may be why `return X;` statements
+>   don't reconstruct cleanly (orphan `Variable + ReturnValue + ==` patterns
+>   at function tails in some functions).
+> * **`else if` / `for` reconstruction** — JumpIfNot folds into `if(...)`
+>   correctly, but goto-based loops and chained ifs render as raw `goto J0xNN;`
+>   without higher-level recognition. Would need NestManager extensions.
+> * **Statement merging** — some functions still show multiple statements
+>   collapsed as nested expressions (most visible in
+>   RotatorConversions.GetAsDegrees). Likely caused by remaining wrong byte
+>   mappings consuming bytes that should belong to the next statement.
 
 Notes on reverse-engineering the current RL `UStruct::SerializeExpr` byte mapping. Captures findings from the
 session that pulled fresh `D:\Games\rocketleague\TAGame\CookedPCConsole\*.upk` files into
