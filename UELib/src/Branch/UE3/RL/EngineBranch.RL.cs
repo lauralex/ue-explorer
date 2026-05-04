@@ -81,16 +81,26 @@ namespace UELib.Branch.UE3.RL
                 // `Index = false = Index` (nested Let). DiscardKeepTokenRL renders just sub-A,
                 // recovering the source-level `Index = 0;`.
                 { 0x09, typeof(DiscardKeepTokenRL) },
-                { 0x0A, typeof(DelegateCmpEqToken) },
+                // 0x0A: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // DelegateCmpEqToken (4-byte over-consume) which produced spurious ` == `
+                // operators in expression chains. Real EX_StructCmpEq is at 0x53; the
+                // delegate compares are native operators.
+                { 0x0A, typeof(NothingToken) },
                 // 0x0B: VERIFIED IntConst (reads INT, NOT DynamicArrayElement).
                 // GNatives[0x0B] = sub_7FF6CD2F6DC0 reads 4-byte INT and writes to *a3.
                 { 0x0B, typeof(IntConstToken) },
                 { 0x0C, typeof(EventSubscribeToken) },
-                // 0x0D: 13-byte payload (3 ints + 1 byte) — matches DebugInfoToken's shape.
-                // Decompile-side, DebugInfo tokens are skipped, so the bytes are consumed
-                // without disrupting the surrounding statement.
-                { 0x0D, typeof(DebugInfoToken) },
-                { 0x0E, typeof(IteratorNextToken) },
+                // 0x0D: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // DebugInfoToken (13-byte over-consume — silently swallowed adjacent tokens
+                // when this byte appeared in real bytecode).
+                { 0x0D, typeof(NothingToken) },
+                // 0x0E: VERIFIED EX_StructCmpEq (NOT IteratorNext).
+                // GNatives[0x0E] = sub_7FF6CD2F63E0 reads 8-byte UStruct* + 2 sub-exprs and
+                // calls sub_7FF6CD658AC0(struct, lhs_buf, rhs_buf, 0) — same struct-compare
+                // helper as 0x53, with the 4th arg = 0 indicating EQUALITY. Was wrongly
+                // IteratorNextToken (a 1-byte continue marker — under-consumed and produced
+                // spurious `continue` keywords).
+                { 0x0E, typeof(StructCmpEqToken) },
                 { 0x0F, typeof(FinalFunctionTokenRL) }, // new-build replacement for 0x38 super-call shape; FinalFunctionTokenRL now reads the mandatory skip byte after UFunction*; see RL_OPCODE_ANALYSIS.md
                 // 0x10: was ExtendedNativeFunctionToken which read sub_byte and produced
                 // __NFUN_(sub+5000)__ placeholders. Binary RE: byte 0x10 dispatches to the
@@ -235,9 +245,15 @@ namespace UELib.Branch.UE3.RL
                 // Ball_TA.IsGroundHit's `ToleranceZ = ;` empty-RHS render — the ternary
                 // RHS was being eaten as DebugInfo's Version/Line/TextPos.
                 { 0x2C, typeof(StatementWrapperTokenRL) },
-                // 0x2D: tied across EventSubscribe/EventUnsubscribe and several other
-                // (FNAME + 1 sub) shapes — picked EventUnsubscribeToken as a guess.
-                { 0x2D, typeof(EventUnsubscribeToken) },
+                // 0x2D: VERIFIED 3-sub-expr assert-shape (NOT EventUnsubscribe).
+                // GNatives[0x2D] = sub_7FF6CD2F06A0 reads u16 + byte + 3 sub-exprs and
+                // logs "Assertion failed, line %i" via the debugger predicate. New token
+                // AssertExpressionTokenRL renders as `assert(arg0, arg1, arg2)`. The
+                // previous EventUnsubscribe mapping (2 sub-exprs, no u16+byte preamble)
+                // mismatched the wire format and NRE'd on every occurrence — producing
+                // ` -= ` orphan operators inside if-conditions in Ball_TA.PostBeginPlay
+                // and similar functions.
+                { 0x2D, typeof(AssertExpressionTokenRL) },
                 // 0x2E: VERIFIED Nothing (empty stub, aliased to 0x1D).
                 // Same handler address as 0x1D — empty function. Was wrongly mapped to Case
                 // (which reads a 2-byte WORD + optional sub-expression).
