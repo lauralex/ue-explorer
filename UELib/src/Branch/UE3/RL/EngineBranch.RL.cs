@@ -220,11 +220,18 @@ namespace UELib.Branch.UE3.RL
                 // 0x24: VERIFIED unmapped (binary handler = default error). Was wrongly
                 // DeprecatedTokenRL which over-consumed bytes per occurrence.
                 { 0x24, typeof(NothingToken) },
-                // 0x25: VERIFIED u16 + conditional sub-expression — same shape as 0x31.
+                // 0x25: VERIFIED Case (switch case marker — u16 jump target + sub-expr value).
                 // GNatives[0x25] = sub_7FF6CD2F0590 reads u16; if not 0xFFFF dispatches one
-                // sub-expression. This is the actual binary location of the optional-arg-skip
-                // pattern. Was wrongly FalseToken (1-byte leaf — under-consumed by 4+ bytes).
-                { 0x25, typeof(OptionalArgSkipTokenRL) },
+                // sub-expression (the case-value expression that the runtime compares against
+                // the switch value). Wire format is identical to baseline EX_Case.
+                // Distinct from 0x31 (sub_7FF6CD2ED4A0) which has a variadic-body wire format
+                // gated on a runtime flag — that's the actual optional-arg / default-parameter
+                // pattern and stays mapped to OptionalArgSkipTokenRL.
+                // Was wrongly OptionalArgSkipTokenRL — every switch case rendered as empty,
+                // collapsing the switch body into a goto/if tangle. Visible in
+                // AntiCheatMessenger_TA.ReplicatedEvent where the `name VarName` switch
+                // dispatched cases as 1-statement bodies that wandered into goto J0x69 chains.
+                { 0x25, typeof(CaseToken) },
                 // 0x26: VERIFIED unmapped (binary handler = default error). Was wrongly
                 // EndParmValueToken which is a 1-byte leaf — safe but its presence in the
                 // parser falsely triggers `EX_EmptyParmValue` rendering as a comma.

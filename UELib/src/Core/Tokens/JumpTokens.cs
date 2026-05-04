@@ -502,6 +502,38 @@ namespace UELib.Core
                     Decompiler._Nester ??= new NestManager { Decompiler = Decompiler };
 
                     int nestEndPosition = CodeOffset;
+
+                    // RL cooker bug: stored CodeOffset can place the brace
+                    // INSIDE the JumpIfNot's own bytes (CodeOffset < Position +
+                    // Size — impossible for a valid forward jump). This shows
+                    // up in HandleClientActionRequired-style functions whose
+                    // condition contains a LocalVariable or other 4→8 expansion
+                    // and whose body is a single short statement (e.g.
+                    // `if(cond) { return; }`). The cooker undercounted the
+                    // in-memory size of the condition by exactly one expansion
+                    // per object reference, so the recorded CodeOffset lands
+                    // before the body even starts. Recover by walking forward
+                    // from the JumpIfNot's end to the first sibling token and
+                    // ending the if-body just past it (single-statement body
+                    // assumption — fits the empirical shape of the bug).
+                    if (!IsLoop
+                        && CodeOffset > Position
+                        && CodeOffset < Position + Size)
+                    {
+                        int afterJump = Position + Size;
+                        for (int j = Decompiler.DeserializedTokens.IndexOf(this) + 1;
+                             j < Decompiler.DeserializedTokens.Count;
+                             j++)
+                        {
+                            var t = Decompiler.DeserializedTokens[j];
+                            if (t.Position >= afterJump)
+                            {
+                                nestEndPosition = t.Position + t.Size;
+                                break;
+                            }
+                        }
+                    }
+
                     if (IsLoop)
                     {
                         // Extend the Loop nest's end past the back-edge JumpToken so the
