@@ -73,15 +73,16 @@ namespace UELib.Branch.UE3.RL
                 // Tied with InterfaceCast/DynamicCast/MetaClassCast/ObjectConst — all 1-sub
                 // shapes in baseline UE3. Picked EatReturnValue as the simplest leaf-of-leaf.
                 { 0x08, typeof(EatReturnValueToken) },
-                // 0x09: VERIFIED 2-sub-expr wrapper (with optional 0x20 debug-info prefix).
-                // GNatives[0x09] = sub_7FF6CD2F5930 reads optional 0x20 prefix (skips DebugInfo
-                // bytes if present), then dispatches sub-opcode A, then dispatches sub-opcode B.
-                // Both sub-exprs are dispatched with the same `this` (Object). NO UProperty* read.
-                // Same shape as Let/LetBool/LetDelegate (assignment family). Map to LetToken so it
-                // renders as `<LHS> = <RHS>`. Was wrongly DefaultVariableToken (which reads 8-byte
-                // UProperty* — the 8 mistaken bytes were corrupting downstream stream alignment,
-                // producing `default.@NULL` orphans).
-                { 0x09, typeof(LetToken) },
+                // 0x09: VERIFIED comma-operator-style wrapper (NOT an assignment).
+                // GNatives[0x09] = sub_7FF6CD2F5930 evaluates sub-A for side-effects then
+                // evaluates sub-B and returns its value: equivalent to `(A, B)` where the
+                // whole expression's value is B. Cooker emits this around for-loop init
+                // expressions like `for (Index = 0; ...; ...)` — sub-A is the actual
+                // assignment, sub-B is the variable being read for the "expression value"
+                // the for-loop notation requires. Mapping to LetToken rendered the bytes as
+                // `Index = false = Index` (nested Let). DiscardKeepTokenRL renders just sub-A,
+                // recovering the source-level `Index = 0;`.
+                { 0x09, typeof(DiscardKeepTokenRL) },
                 { 0x0A, typeof(DelegateCmpEqToken) },
                 // 0x0B: VERIFIED IntConst (reads INT, NOT DynamicArrayElement).
                 // GNatives[0x0B] = sub_7FF6CD2F6DC0 reads 4-byte INT and writes to *a3.
@@ -172,10 +173,12 @@ namespace UELib.Branch.UE3.RL
                 { 0x24, typeof(DeprecatedTokenRL) },
                 { 0x25, typeof(FalseToken) },
                 { 0x26, typeof(EndParmValueToken) },
-                // 0x27: VERIFIED IntZero/False (aliased with 0x1C — same runtime handler).
-                // Picking FalseToken so we have one each of IntZero/False available.
-                // Was wrongly mapped to ByteConst (which reads 1 byte from Code).
-                { 0x27, typeof(FalseToken) },
+                // 0x27: VERIFIED 4-byte-zero leaf (aliased with 0x1C — same runtime handler).
+                // Picking IntZeroToken (renders "0") rather than FalseToken (renders "false")
+                // because empirically the cooker emits 0x27 for int-zero contexts (for-loop
+                // init `Index = 0`, etc.). Rendering as "false" produced invalid UnrealScript
+                // like `Index = false`. Real bool `false` constants come through 0x1C now.
+                { 0x27, typeof(IntZeroToken) },
                 // 0x28: VERIFIED Context (object.member access).
                 // GNatives[0x28] = sub_7FF6CD2F5CB0 reads {1 byte, sub-expr (object), 2 bytes
                 // null-skip, UField* + property type via sub_7FF6CD317F00, sub-expr (context)} —
