@@ -1,5 +1,62 @@
 # Rocket League opcode analysis
 
+> **STATUS UPDATE (2026-05-04 — primary token map essentially complete)**
+>
+> Almost every primary opcode (0x00..0x6F) is now ground-truthed against the
+> binary's GNatives table at `0x7FF6CF2AA580`. Real RL bytecode decompiles to
+> readable UnrealScript across diverse function bodies.
+>
+> Newly verified this session (on top of the 2026-05-03 wave):
+>
+> | RL byte | EX_ name                  | Notes |
+> |---------|---------------------------|-------|
+> | 0x00    | EX_Return / padding       | Context-aware via `ContextAwareReturnTokenRL`: at top-level statement (DeserializationDepth=1, no recovery, next byte != 0x00, not inside variadic call) acts as `EX_Return`. Otherwise NothingToken / padding. |
+> | 0x09    | comma operator (`A, B`)    | New `DiscardKeepTokenRL` — sub-A side-effects, sub-B value discarded. Cooker emits this around for-loop init expressions. |
+> | 0x21    | EX_DynArrayIterator (foreach) | Was already mapped; verified via `Actor.FindEventsOfClass` disassembly. |
+> | 0x27    | IntZero / False           | Remapped from FalseToken to IntZeroToken — cooker uses 0x27 for both `Index = 0` and `bX = false` contexts; rendering as `0` is valid for both, `false` was invalid for ints. |
+> | 0x32    | EX_InstanceDelegate (RL fork) | New `InstanceDelegateTokenRL` — 16 bytes (UObject* + FName); RL bakes in the object reference. |
+> | 0x36    | property setter w/ discard | New `PropertySetterDiscardTokenRL` — UProperty* + sub-expr; result slot zeroed. |
+> | 0x43    | EX_ObjectConst             | Was DebugInfo (read 13 bytes — over-consumed) then NameConst (rendered weird FNames). Settled on ObjectConst because the byte appears as `Class'X'.static.Method(...)` in real bytecode. |
+> | 0x53    | EX_StructCmpEq             | Was LocalVariable. `8-byte UStruct* + 2 sub-exprs` matches ComparisonToken wire format. |
+> | 0x4D    | EX_StructConst-like        | New `StructValueTokenRL` — 8-byte UStruct* + 1 sub-expr. |
+> | 0x68 / 0x6E / 0x6F / 0x03 / 0x4E | UNMAPPED  | All five map to the binary default error handler — never appear in valid bytecode. Mapped to NothingToken (1-byte safe). |
+> | 0x69    | EX_IteratorPop            | Was DelegateCmpNe. Has unique runtime error string "Unexpected iterator pop command at %s:%04X". |
+>
+> ### Decompile-side improvements (this session)
+>
+> - **`ContextAwareReturnTokenRL`** at byte 0x00 — uses three signals to
+>   distinguish EX_Return from alignment padding: `VariadicCallDepth`
+>   (incremented around `FunctionToken.DeserializeCall`), `DeserializationDepth`
+>   (1 = top-level statement), and `LastIterationRecovered` (set in the
+>   central deserialize-loop catch, cleared after each successful iteration).
+>   Plus peek-next-byte and prev-token-padding-chain heuristics.
+>   Recovers `return X;` reconstruction across UpdateTeamLoadout / SetLoadouts /
+>   PostBeginPlay without scrambling LogInternal-style variadic argument lists
+>   that contain inline 0x00 padding bytes.
+> - **`DataScriptSize` loop bound** in `ByteCodeDecompiler.Deserialize` — the
+>   on-disk byte count, used as the buffer-cursor bound (instead of
+>   `ByteScriptSize` which is the larger memory-layout size). Eliminates trailing
+>   orphan tokens like `67109385` past the function's real bytecode end.
+> - **ReturnNothingToken renders empty** — was leaking the OUT property's name
+>   (`ReturnValue`) as an orphan statement at end of function. Now suppressed.
+>
+> ### Output milestones — diverse functions sampled
+>
+> | Function                                    | Status |
+> |---------------------------------------------|--------|
+> | `Pawn.SpawnDefaultController` (Engine.upk)  | PERFECT — matches baseline UE3 source |
+> | `PlayerController.PlayerTick`               | PERFECT |
+> | `Controller.PostBeginPlay`                  | PERFECT |
+> | `Car_TA.CreateRumblePickups`                | PERFECT — `RumblePickups = Class'X'.static.CreateInstance(WorldInfo, self);` |
+> | `Car_TA.PostBeginPlay`                      | PERFECT — clean if/else, AttachComponent, ObjectProvider.Subscribe(...) |
+> | `PRI_TA.HandlePlayerNameChanged`            | PERFECT |
+> | `Ball_TA` (whole-class decompile)           | All structs, properties, replication blocks, delegates, defaultproperties block render structurally correct |
+> | `PRI_TA.SetLoadouts`                        | for-loops as `Index = 0; if(Index < 2) { body; ++Index; } goto J0xN;` — body and structure correct, just not folded into `for` syntax |
+> | `Car_TA.UpdateTeamLoadout`                  | Clean assignments, member access, `return 0;` `return 1;` properly reconstructed |
+> | `Actor.FindEventsOfClass` (Engine.upk)     | foreach token recognized but body bound incorrectly (Task #47) |
+>
+> Original 2026-05-03 milestones below remain valid; this session refined them.
+
 > **STATUS UPDATE (2026-05-03 — major rewrite of the token map)**
 >
 > The map has been ground-truthed against the binary. The keystone was that
