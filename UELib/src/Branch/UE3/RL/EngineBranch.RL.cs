@@ -267,12 +267,14 @@ namespace UELib.Branch.UE3.RL
                 { 0x42, typeof(DefaultParameterToken) },
                 // 0x43: VERIFIED 8-byte qword leaf (NOT DebugInfo).
                 // GNatives[0x43] = sub_7FF6CD2F6FA0 — same handler as 0x39, 0x3B, 0x5A. Just reads
-                // 8 bytes from Code, advances 8, writes qword to *a3. Empirical "+69 clean"
-                // earlier was misleading because DebugInfo's 13-byte payload happened to land on
-                // valid-looking next-token boundaries; the actual byte semantic is an 8-byte leaf.
-                // Was wrongly DebugInfoToken (13-byte payload), causing it to over-consume 5
-                // bytes per occurrence and scramble downstream tokens.
-                { 0x43, typeof(NameConstToken) },
+                // 8 bytes from Code, advances 8, writes qword to *a3. The four aliases each parse
+                // to a different baseline EX_ at compile time (NameConst, ObjectConst,
+                // InstanceDelegate, ...) but the runtime doesn't care since all four push 8 bytes
+                // to result. Picking ObjectConst here because in real RL bytecode 0x43 typically
+                // appears as ClassContext's sub-expr A — the OBJECT being accessed — which
+                // semantically must be a UObject*, not an FName.
+                // Was wrongly DebugInfoToken (13-byte payload — over-consumed by 5 bytes).
+                { 0x43, typeof(ObjectConstToken) },
                 { 0x44, typeof(UnicodeStringConstToken) },
                 { 0x45, typeof(EndFunctionParmsToken) },
                 // 0x46: VERIFIED LetBool-shape (dispatches 2 sub-opcodes — assignment).
