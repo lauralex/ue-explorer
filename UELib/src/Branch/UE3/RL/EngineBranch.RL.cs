@@ -231,7 +231,13 @@ namespace UELib.Branch.UE3.RL
                 // 0x35: FNAME (8-byte) shape — tied across NameConst / Virtual / Global
                 // function. Picked NameConstToken (simplest leaf).
                 { 0x35, typeof(NameConstToken) },
-                { 0x36, typeof(VectorConstToken) },
+                // 0x36: VERIFIED property-setter-with-discard.
+                // GNatives[0x36] = sub_7FF6CD2F7250 reads 8-byte UProperty*, dispatches a sub-
+                // expression, then writes 0 to the result slot — i.e. the sub-expression's
+                // nominal value is unused. Renders as `Property = Expression`. Was wrongly
+                // VectorConstToken (12 bytes — under-read by 3 bytes per occurrence and emitted
+                // a vect() literal instead of a property assignment).
+                { 0x36, typeof(PropertySetterDiscardTokenRL) },
                 { 0x37, typeof(FloatConstToken) },
                 // 0x38: VERIFIED ClassContext (NOT FinalFunction).
                 // GNatives[0x38] = sub_7FF6CD308710 has unique runtime error
