@@ -3,23 +3,27 @@ using UELib.Core;
 namespace UELib.Branch.UE3.RL.Tokens;
 
 /// <summary>
-/// RL byte 0x5B — struct-typed default-parameter / ternary-result wrapper.
-/// The binary handler at GNatives[0x5B] (sub_7FF6CD308170) reads:
-///   * 8 bytes — UStruct* (the struct type)
-///   * 1 sub-expression (the "default" or "fallback" value)
-///   * u16 — byte size of the conditionally-skipped sub-expression
-///   * 1 sub-expression (the "actual" or "computed" value)
+/// RL byte 0x5B — none-coalescing operator (<c>A ?? B</c>).
+/// The binary handler at GNatives[0x5B] (sub_7FF6CD308170) does:
+///   * Read 4-byte UStruct* (expanded to 8 in-memory) — the LHS-property's struct type
+///   * Compute LHS-property address as <c>Locals[StructRef.offset]</c>
+///   * Dispatch sub-1 — writes to the LHS-property slot ("primary" value)
+///   * Read u16 SkipDistance
+///   * Test the LHS slot against an all-zeros buffer of the struct's size
+///   * If equal (i.e. the struct is "default"/"none"): dispatch sub-2 ("fallback")
+///   * Else: skip <c>SkipDistance</c> bytes past sub-2 (use sub-1's value)
 ///
-/// At runtime the struct's properties are compared, and depending on the
-/// result either the second sub-expression is dispatched OR u16 bytes are
-/// skipped past it. For parsing/decompilation, both sub-expressions must
-/// be consumed (the bytes are always present even when the runtime path
-/// skips them).
+/// That's the runtime shape of the none-coalescing operator: <c>sub_1 ?? sub_2</c>
+/// (use <c>sub_1</c> unless it's none/default, in which case use <c>sub_2</c>).
+/// The cooker emits a synthetic local named <c>NoneCoalescing_0xN</c> that
+/// holds the LHS slot, and the surrounding decompile typically reads
+/// <c>local Foo NoneCoalescing_0x1;</c> in the function header.
 ///
-/// Renders the second sub-expression (the actual computed value). Was
-/// wrongly mapped to <c>VectorConstToken</c> (12 bytes — read the next
-/// 12 bytes as 3 floats), producing nonsense like <c>ControllerRef =
-/// vect(0, 0, -9.52e21)</c> for a non-vector type.
+/// Renders as <c>sub_1 ?? sub_2</c> — UnrealScript itself doesn't have a `??`
+/// operator, but the form is unambiguous and matches what the user-facing
+/// source likely was. Was wrongly mapped to <c>VectorConstToken</c> (12 bytes
+/// — read the next 12 bytes as 3 floats), producing nonsense like
+/// <c>ControllerRef = vect(0, 0, -9.52e21)</c> for a non-vector type.
 /// </summary>
 public class StructDefaultParameterTokenRL : UStruct.UByteCodeDecompiler.Token
 {
@@ -41,7 +45,18 @@ public class StructDefaultParameterTokenRL : UStruct.UByteCodeDecompiler.Token
 
     public override string Decompile()
     {
-        DecompileNext();
-        return DecompileNext();
+        string primary = DecompileNext();
+        string fallback = DecompileNext();
+        if (string.IsNullOrEmpty(fallback))
+        {
+            return primary;
+        }
+
+        if (string.IsNullOrEmpty(primary))
+        {
+            return fallback;
+        }
+
+        return $"{primary} ?? {fallback}";
     }
 }
