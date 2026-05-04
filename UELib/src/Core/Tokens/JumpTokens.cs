@@ -268,17 +268,25 @@ namespace UELib.Core
 
                     if (CodeOffset < Position)
                     {
-                        // Backward jump = loop back-edge. If we're inside a Loop nest whose
-                        // creator is a JumpIfNotToken (the standard `while(...)` shape), and
-                        // we're jumping to at-or-before the loop's start, suppress the goto —
-                        // it's implicit in `while(...) { ... }` syntax. Cooked UE3 emits the
-                        // back-edge target at the test-expression's first load (a few bytes
-                        // before the JumpIfNot), so accept any CodeOffset <= JumpIfNot.Position.
+                        // Suppress only the actual loop back-edge — the JumpIfNot's
+                        // detection stashed it on `LoopBackEdge`. Any OTHER backward goto
+                        // inside the loop body (e.g. a `continue` statement, which compiles
+                        // to a backward jump to the loop start) must still render.
                         if (Decompiler.IsWithinNest(NestManager.Nest.NestType.Loop)?.Creator is JumpIfNotToken
-                            loopJumpIfNot && CodeOffset <= loopJumpIfNot.Position)
+                            loopJumpIfNot && loopJumpIfNot.LoopBackEdge == this)
                         {
                             NoJumpLabel();
                             return "";
+                        }
+
+                        // Backward goto that's NOT the loop's own back-edge — most likely
+                        // a `continue` (jump to test-expression load).
+                        if (Decompiler.IsWithinNest(NestManager.Nest.NestType.Loop)?.Creator is JumpIfNotToken
+                            loopOuter && CodeOffset <= loopOuter.Position)
+                        {
+                            NoJumpLabel();
+                            Decompiler._CanAddSemicolon = true;
+                            return "continue";
                         }
 
                         SetStatementComment("Loop Continue");
@@ -352,6 +360,7 @@ namespace UELib.Core
             public class JumpIfNotToken : JumpToken
             {
                 public bool IsLoop;
+                public JumpToken LoopBackEdge;
 
                 protected void RemoveSemicolon()
                 {
@@ -414,10 +423,6 @@ namespace UELib.Core
                     }
 
                     SetEndComment();
-                    if (IsLoop)
-                    {
-                        Decompiler.PreComment += " [Loop If]";
-                    }
 
                     string output;
                     if ((CodeOffset & ushort.MaxValue) < Position)
@@ -502,7 +507,10 @@ namespace UELib.Core
                         // Extend the Loop nest's end past the back-edge JumpToken so the
                         // closing `}` lands AFTER the back-edge, and the JumpToken's
                         // Decompile sees we're still inside a Loop nest (which lets it
-                        // suppress the implicit-goto-back rendering).
+                        // suppress the implicit-goto-back rendering). Stash the back-edge
+                        // reference so JumpToken.Decompile can identify it precisely (not
+                        // any backward goto inside the body — `continue` statements are
+                        // also backward gotos to the loop start and must NOT be suppressed).
                         for (int i = Decompiler.CurrentTokenIndex + 1; i < Decompiler.DeserializedTokens.Count; ++i)
                         {
                             var t = Decompiler.DeserializedTokens[i];
@@ -513,6 +521,7 @@ namespace UELib.Core
                                 && jt.CodeOffset < jt.Position)
                             {
                                 nestEndPosition = jt.Position + jt.Size;
+                                LoopBackEdge = jt;
                                 break;
                             }
                             if (t.Position > CodeOffset + 10) break;
