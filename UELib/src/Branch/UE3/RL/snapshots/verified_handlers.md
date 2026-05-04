@@ -120,10 +120,10 @@ unique-string fingerprints, byte-read patterns, and structural fingerprints.
 | 0x16  | sub_7FF6CD2F6800 (shared 0x05) | Mapped to DynamicArrayElement. Real array index is 0x1E. May be alt. |
 | 0x1B  | sub_7FF6CD2F6AE0 (736, shared with 0x54) | Two bytes share this large handler. TBD. |
 | 0x20  | sub_7FF6CD3027A0 (117)       | HANDLE_OPTIONAL_DEBUG_INFO macro (peek byte 100, conditional consume 13 bytes). NOT EX_Return. |
-| 0x21  | sub_7FF6CD2F5A40 (179)       | 1-sub-expr wrapper. Could be many things. Mapped to DynArrayIterator. |
+| 0x21  | sub_7FF6CD2F5A40 (179)       | RESOLVED — see "Newly verified (later)" above. property→string cast. |
 | 0x32  | sub_7FF6CD2F6180 (189)       | 16-byte payload (UObject* + FName + 0). Mapped to VectorConst (12 bytes — under-reads 4). Likely **EX_InstanceDelegate** or similar. |
 | 0x36  | sub_7FF6CD2F7250 (237)       | 8 bytes (UProperty*) + 1 byte sub-op + sub-expr; sets *a3 = 0. Possibly EX_DynArrayLength setter or EX_DefaultParameter variant. |
-| 0x37  | sub_7FF6CD2F5810 (285)       | 2 sub-exprs + u16 + conditional variadic body (terminator 0x3E). Iterator-shape. Currently FloatConst (under-reads). Likely **EX_DynArrayIterator** or **EX_Iterator**. |
+| 0x37  | sub_7FF6CD2F5810 (285)       | VERIFIED 2 sub-exprs + u16 end-offset + **conditional** variadic body (terminator 0x3E) + optional 0x20 debug-info. Pattern: `if (*sub_A != 0) { run body until 0x3E } else { jump to end-offset }` — semantically a NULL-checked delegate/function call (not a foreach iterator: lacks the array, item, withindex, index sub-tokens). Currently FloatConst (under-reads — only consumes 4 bytes). Remap deferred until found in real bytecode (have not observed in TAGame/Engine fixtures so far). |
 | 0x54  | sub_7FF6CD2F6AE0 (736, shared with 0x1B) | Same handler as 0x1B. TBD. |
 
 ## Methodology Notes
@@ -163,15 +163,14 @@ two functions Daisy flagged in screenshots:
   into `Index = 0; if (Index < 2) { body; ++Index; } goto J0xN;` — all
   pieces render correctly individually but NestManager doesn't recognize
   the goto-back pattern as a loop. Tracked as task #43.
-- **0x37 / 0x32 / 0x36 wire formats.** Three GNatives entries with known
-  binary handler addresses but no proper UELib-side token yet:
-  - 0x37: 2 sub-exprs + u16 + variadic body — likely `EX_DynArrayIterator`
-    or `EX_Iterator`. Currently FloatConst (under-reads). Affects foreach
-    loops if any ship in real bytecode.
-  - 0x32: UObject* + FName (16 bytes) — likely `EX_InstanceDelegate`.
-    Currently VectorConst (12 bytes — under-reads 4).
-  - 0x36: UProperty* + sub-expr; result discarded — possibly
-    `EX_DynArrayLength`-set or property setter. Currently VectorConst.
+- **0x37 wire format unmapped.** GNatives[0x37] handler is verified
+  iterator-shape (2 sub-exprs + u16 + conditional variadic body, terminator
+  0x3E) — semantically a NULL-checked function/delegate call wrapper. Not
+  observed in TAGame/Engine fixtures yet, so the remap is deferred. Current
+  FloatConst mapping under-reads when the byte does appear (consumes 4 bytes
+  for what should be 4+sub+sub+u16+body+0). Remap when first encountered.
+  (0x32 and 0x36 already remapped — see InstanceDelegateTokenRL and
+  PropertySetterDiscardTokenRL.)
 - **Spawn-call rendering.** Patterns like `X = Spawn(class'Y', self)`
   sometimes render with the args orphaned across separate lines:
   `X = none;` then `self` then `Class'Y'` as bare statements. Likely
