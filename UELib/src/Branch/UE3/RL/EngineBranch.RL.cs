@@ -212,8 +212,16 @@ namespace UELib.Branch.UE3.RL
                 // 0x2A's u8 read suggests this is IntConstByte. Was wrongly mapped to
                 // VectorConst (which reads 12 bytes).
                 { 0x2B, typeof(IntConstByteToken) },
-                // 0x2C: matches DebugInfoToken's 13-byte shape.
-                { 0x2C, typeof(DebugInfoToken) },
+                // 0x2C: VERIFIED 1-sub-expr wrapper + 1 trailing byte (NOT DebugInfo).
+                // GNatives[0x2C] = sub_7FF6CD308010 dispatches one sub-expression, then
+                // skips a single trailing byte, then optionally consumes 0x20 debug-info,
+                // and calls a log helper printing the script File. Wire format does not
+                // match EX_DebugInfo (which is a fixed 12-byte payload). Previous mapping
+                // happened to consume the right total when the inner sub-expr was 12 bytes,
+                // but silently swallowed the sub-expression's parse. Visible in
+                // Ball_TA.IsGroundHit's `ToleranceZ = ;` empty-RHS render — the ternary
+                // RHS was being eaten as DebugInfo's Version/Line/TextPos.
+                { 0x2C, typeof(StatementWrapperTokenRL) },
                 // 0x2D: tied across EventSubscribe/EventUnsubscribe and several other
                 // (FNAME + 1 sub) shapes — picked EventUnsubscribeToken as a guess.
                 { 0x2D, typeof(EventUnsubscribeToken) },
@@ -226,7 +234,15 @@ namespace UELib.Branch.UE3.RL
                 // Aliased with 0x3A (same handler). Was wrongly mapped to GotoLabel.
                 { 0x2F, typeof(IntOneToken) },
                 { 0x30, typeof(NativeParameterToken) },
-                { 0x31, typeof(InstanceDelegateToken) },
+                // 0x31: VERIFIED u16 + conditional sub-expression (NOT InstanceDelegate).
+                // GNatives[0x31] = sub_7FF6CD2F0590 reads a u16; if it's 0xFFFF the handler
+                // returns without further bytes (skipped/optional), otherwise dispatches a
+                // single sub-expression. Pattern matches EX_Skip — used for omitted optional
+                // positional args at call sites. Was wrongly InstanceDelegateToken (which
+                // reads 8-byte UObject* + 8-byte FName = 16 bytes) — every occurrence NRE'd
+                // during the import-table lookup. Visible in Ball_TA.OnCarTouch which starts
+                // with 0x31 and would render "InstanceDelegateToken size 0".
+                { 0x31, typeof(OptionalArgSkipTokenRL) },
                 // 0x32: VERIFIED InstanceDelegate (UObject* + FName, 16 bytes).
                 // GNatives[0x32] = sub_7FF6CD2F6180 reads 8-byte UObject* + 8-byte FName
                 // and constructs a `{Object, Name, 0}` delegate tuple — that's the canonical
