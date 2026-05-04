@@ -219,8 +219,13 @@ namespace UELib.Branch.UE3.RL
                 { 0x2F, typeof(IntOneToken) },
                 { 0x30, typeof(NativeParameterToken) },
                 { 0x31, typeof(InstanceDelegateToken) },
-                // 0x32: 12-byte payload — Vector/RotationConst shape.
-                { 0x32, typeof(VectorConstToken) },
+                // 0x32: VERIFIED InstanceDelegate (UObject* + FName, 16 bytes).
+                // GNatives[0x32] = sub_7FF6CD2F6180 reads 8-byte UObject* + 8-byte FName
+                // and constructs a `{Object, Name, 0}` delegate tuple — that's the canonical
+                // RL `EX_InstanceDelegate` runtime behavior with the Object baked in (baseline
+                // UE3 EX_InstanceDelegate carries only the FName). Was wrongly VectorConst
+                // (12 bytes — under-read 4 bytes per occurrence).
+                { 0x32, typeof(InstanceDelegateTokenRL) },
                 { 0x33, typeof(AssertTokenRL) },
                 { 0x34, typeof(LetDelegateToken) },
                 // 0x35: FNAME (8-byte) shape — tied across NameConst / Virtual / Global
