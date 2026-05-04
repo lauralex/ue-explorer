@@ -102,7 +102,12 @@ public sealed record ObjectInfoDto(
     string path,
     string? outer);
 
-public sealed record DecompileResultDto(string source, string? warning);
+public sealed record DecompileResultDto(
+    string source,
+    string? warning,
+    // Each entry is "source:total_chars" when the source was truncated by `max_chars`.
+    // Empty when nothing was cut.
+    IReadOnlyList<string> truncations);
 
 public sealed record TokenDto(
     int position,

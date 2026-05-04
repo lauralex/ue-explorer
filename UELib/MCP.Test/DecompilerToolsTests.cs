@@ -159,4 +159,37 @@ public sealed class DecompilerToolsTests
         await Assert.ThrowsExceptionAsync<McpException>(
             () => dec.DecompileObject(handle, "Definitely.Does.Not.Exist"));
     }
+
+    [TestMethod]
+    public async Task DecompileClass_TruncatesAtMaxChars()
+    {
+        var (sessions, _, _, dec, handle) = await OpenAsync("TestUC2.u");
+        await using var _disp = sessions;
+
+        var result = await dec.DecompileClass(handle, "ClassDeclarations", max_chars: 50);
+
+        Assert.IsTrue(result.truncations.Count == 1,
+            $"Expected exactly one truncation entry, got {result.truncations.Count}.");
+        Assert.IsTrue(result.truncations[0].StartsWith("source:", StringComparison.Ordinal),
+            $"Truncation entry should start with 'source:'. Got: {result.truncations[0]}");
+        // 50 chars of body + the suffix marker line; expect well under double the cap.
+        Assert.IsTrue(result.source.Length > 50 && result.source.Length < 250,
+            $"Truncated source length = {result.source.Length}; expected between 50 and 250.");
+        Assert.IsTrue(result.source.Contains("[TRUNCATED", StringComparison.Ordinal),
+            "Truncated source should contain the [TRUNCATED ...] marker.");
+    }
+
+    [TestMethod]
+    public async Task DecompileClass_NoTruncationWhenUnderLimit()
+    {
+        var (sessions, _, _, dec, handle) = await OpenAsync("TestUC2.u");
+        await using var _disp = sessions;
+
+        var result = await dec.DecompileClass(handle, "ClassDeclarations", max_chars: 1_000_000);
+
+        Assert.AreEqual(0, result.truncations.Count,
+            "ClassDeclarations is small; should not truncate at 1M cap.");
+        Assert.IsFalse(result.source.Contains("[TRUNCATED", StringComparison.Ordinal),
+            "Untruncated source should not carry the [TRUNCATED ...] marker.");
+    }
 }

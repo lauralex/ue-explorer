@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using ModelContextProtocol.Server;
 using UELib.Core;
 using UELib.Flags;
@@ -11,7 +12,7 @@ namespace UELib.MCP.Tools;
 [McpServerToolType]
 public sealed class ObjectTools(PackageSessionManager sessions)
 {
-    [McpServerTool(Name = "find_object",
+    [McpServerTool(Name = "find_object", UseStructuredContent = true,
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Look up an object by its full group path (e.g. 'Engine.Actor' or 'TAGame.Car_TA.OnPossessed'). " +
                  "Exact match only — returns null if the path is unknown. " +
@@ -21,6 +22,7 @@ public sealed class ObjectTools(PackageSessionManager sessions)
         [Description("Dotted group path, e.g. 'Engine.Actor' or 'TAGame.Pawn_TA'.")] string group_path,
         CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         return sessions.RunAsync<ObjectInfoDto?>(() =>
         {
             var pkg = sessions.Get(handle).Package;
@@ -31,7 +33,7 @@ public sealed class ObjectTools(PackageSessionManager sessions)
         }, ct);
     }
 
-    [McpServerTool(Name = "get_class_info",
+    [McpServerTool(Name = "get_class_info", UseStructuredContent = true,
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Return a structured snapshot of a class: super, within, package imports, properties, functions, " +
                  "states, structs, consts, enums. Provide either a bare class name (e.g. 'Pawn_TA') or a dotted path. " +
@@ -43,10 +45,11 @@ public sealed class ObjectTools(PackageSessionManager sessions)
     public Task<ClassInfoDto> GetClassInfo(
         [Description("Handle returned by load_package.")] string handle,
         [Description("Class name (e.g. 'Actor') or dotted path (e.g. 'Engine.Actor').")] string class_name,
-        [Description("Per-section cap on returned member arrays (1..1000). Default 100. " +
+        [Range(1, 1000), Description("Per-section cap on returned member arrays (1..1000). Default 100. " +
                      "Sections that hit the cap are listed in `truncations`.")] int member_limit = 100,
         CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         return sessions.RunAsync(() =>
         {
             var pkg = sessions.Get(handle).Package;
@@ -56,7 +59,7 @@ public sealed class ObjectTools(PackageSessionManager sessions)
         }, ct);
     }
 
-    [McpServerTool(Name = "get_function_info",
+    [McpServerTool(Name = "get_function_info", UseStructuredContent = true,
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Return signature, flags, native index, parameters, and return type for a single function on a class. " +
                  "class_path may be a bare name or dotted path; function_name is the method's UnrealScript name. " +
@@ -67,6 +70,7 @@ public sealed class ObjectTools(PackageSessionManager sessions)
         [Description("UnrealScript function name (case-sensitive match against UFunction.Name).")] string function_name,
         CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         return sessions.RunAsync(() =>
         {
             var pkg = sessions.Get(handle).Package;
@@ -77,7 +81,7 @@ public sealed class ObjectTools(PackageSessionManager sessions)
         }, ct);
     }
 
-    [McpServerTool(Name = "search_objects",
+    [McpServerTool(Name = "search_objects", UseStructuredContent = true,
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Case-insensitive substring search across object names in a loaded package. " +
                  "Use this when you don't know the exact class path. " +
@@ -86,9 +90,10 @@ public sealed class ObjectTools(PackageSessionManager sessions)
     public Task<IReadOnlyList<ObjectInfoDto>> SearchObjects(
         [Description("Handle returned by load_package.")] string handle,
         [Description("Substring to match against UObject.Name (case-insensitive).")] string query,
-        [Description("Maximum number of results (1..500). Default 50.")] int max_results = 50,
+        [Range(1, 500), Description("Maximum number of results (1..500). Default 50.")] int max_results = 50,
         CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         return sessions.RunAsync<IReadOnlyList<ObjectInfoDto>>(() =>
         {
             var pkg = sessions.Get(handle).Package;
