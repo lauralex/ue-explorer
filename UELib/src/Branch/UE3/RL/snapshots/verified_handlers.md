@@ -128,6 +128,44 @@ unique-string fingerprints, byte-read patterns, and structural fingerprints.
   check — swapping the byte→EndFunctionParms mapping is sufficient (no string-literal byte changes
   needed elsewhere in the codebase).
 
+## Output milestones (this session)
+
+After the round of fixes captured above, real RL bytecode now decompiles to
+recognizable UnrealScript instead of gibberish. Concrete diffs against the
+two functions Daisy flagged in screenshots:
+
+- `Car_TA.CreateRumblePickups` — went from
+  `RumblePickups = (self != == ) != ++1.;`
+  to
+  `RumblePickups = Class'TAGame_decrypted.RumblePickups_TA'.static.CreateInstance(WorldInfo, self);`
+
+- `Car_TA.UpdateTeamLoadout` — went from a wall of `,, 1,, Tan(,,,,)` orphans
+  to a structured if/else with proper member access:
+  `if(Class'TAGame_decrypted.Car_TA'.default.bUseDefaultLoadout) { ModifiedLoadout.Products = Class'...GameData_TA'.default.DefaultLoadouts[int(TeamPaint.Team)].Products; ... }`
+
+- `Car_TA.PostBeginPlay` — trailing `67109385` orphan eliminated by clamping
+  the deserialize loop on DataScriptSize (the on-disk byte count) instead of
+  ByteScriptSize (the memory-layout size, which can be larger).
+
+## Known remaining decompile artifacts
+
+- **`Index = false` for int locals.** The compiler can emit either 0x1C or
+  0x27 for "write a 4-byte zero"; they share the binary handler. The
+  parser-side picks IntZero or False statically per byte, so an int's
+  `Index = 0` may render as `Index = false` if the cooker chose 0x27.
+  Cosmetic only — semantically `false == 0` in UnrealScript.
+- **Orphan `0` / `1` between statements.** Some 0x00 0x2F / 0x00 0x1C
+  patterns in real bytecode look like `EX_Return 1` / `EX_Return 0` but
+  remapping 0x00 → ReturnToken corrupts variadic argument lists where 0x00
+  is also used as inline padding. Disambiguation needs context-aware parsing
+  (is the byte inside a variadic loop or top-level?). Until then, the
+  IntOne / IntZero leaks out as a bare statement.
+- **Empty if-block bodies on early-exit patterns.** When the user wrote
+  `if (cond) return X;`, the parser sees a JumpIfNot whose body is a
+  return — but our renderer prints `if (cond) {}` followed by an orphan
+  return-value because EX_Return isn't being recognized (same root cause
+  as the orphan `0`/`1` above).
+
 ## Decompile-side improvements (this session)
 
 - **Hardcoded operator symbol map** (`StandardOperatorSymbols.cs`) — ~95 entries from baseline
