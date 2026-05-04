@@ -315,7 +315,10 @@ namespace UELib.Branch.UE3.RL
                 // (which is correctly at 0x38 — different runtime signature with the
                 // "Accessed null class context" error string).
                 { 0x41, typeof(VirtualFunctionToken) },
-                { 0x42, typeof(DefaultParameterToken) },
+                // 0x42: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // DefaultParameterToken (reads u16 + 2 sub-exprs — over-consumed ~6+ bytes
+                // per occurrence, cascading into Ball_TA.IsGroundHit's `default. = ` orphan).
+                { 0x42, typeof(NothingToken) },
                 // 0x43: VERIFIED 8-byte qword leaf (NOT DebugInfo).
                 // GNatives[0x43] = sub_7FF6CD2F6FA0 — same handler as 0x39, 0x3B, 0x5A. Just reads
                 // 8 bytes from Code, advances 8, writes qword to *a3. The four aliases each parse
@@ -326,8 +329,16 @@ namespace UELib.Branch.UE3.RL
                 // semantically must be a UObject*, not an FName.
                 // Was wrongly DebugInfoToken (13-byte payload — over-consumed by 5 bytes).
                 { 0x43, typeof(ObjectConstToken) },
-                { 0x44, typeof(UnicodeStringConstToken) },
-                { 0x45, typeof(EndFunctionParmsToken) },
+                // 0x44: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // UnicodeStringConstToken (consumes UTF-16 chars until null — over-consumed
+                // arbitrarily many bytes per occurrence). Real EX_UnicodeStringConst is at 0x51.
+                { 0x44, typeof(NothingToken) },
+                // 0x45: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // EndFunctionParmsToken (1-byte safe, but its presence in the parser triggers
+                // variadic-call loop termination via the FunctionToken.DeserializeCall
+                // `is EndFunctionParmsToken` check — falsely cutting variadic args short).
+                // Real EX_EndFunctionParms terminator is at 0x3E.
+                { 0x45, typeof(NothingToken) },
                 // 0x46: VERIFIED LetBool-shape (dispatches 2 sub-opcodes — assignment).
                 // GNatives[0x46] = sub_7FF6CD2F12A0 resets the runtime globals, dispatches one
                 // sub-opcode (variable expression), then dispatches a second sub-opcode (value
@@ -362,7 +373,9 @@ namespace UELib.Branch.UE3.RL
                 // allocation of a temporary struct buffer; that's the canonical EX_StructMember
                 // runtime pattern from baseline UE3. Was wrongly DynamicArrayFindToken.
                 { 0x4A, typeof(StructMemberToken) },
-                { 0x4B, typeof(DelegateCmpNeToken) },
+                // 0x4B: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // DelegateCmpNeToken (over-consumes typical delegate-comparison shape).
+                { 0x4B, typeof(NothingToken) },
                 // 0x4C: VERIFIED Let (assignment, NOT EndFunctionParms).
                 // GNatives[0x4C] = sub_7FF6CD2F08B0 has unique runtime error
                 // "Attempt to assign variable through None" — that string is the EX_Let
@@ -383,7 +396,11 @@ namespace UELib.Branch.UE3.RL
                 // StructCmpNeToken (which reads 8 bytes UObject* + 2 sub-exprs). Real
                 // EX_StructCmpEq/Ne is at 0x53.
                 { 0x4E, typeof(NothingToken) },
-                { 0x4F, typeof(ObjectConstToken) },
+                // 0x4F: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // ObjectConstToken (reads 8-byte UObject* — over-consumed 8 bytes per
+                // occurrence and NRE'd on the import-table lookup). Visible in Ball_TA.OnCarTouch
+                // at position 5 — would NRE during the function preamble.
+                { 0x4F, typeof(NothingToken) },
                 // 0x50: VERIFIED StringConst (8-bit ASCII string until null).
                 // GNatives[0x50] = sub_7FF6CD2F6E00 calls sub_7FF6CD2B7EC0(&local, Code) — that's
                 // the FString constructor from a C-string. UnicodeStringConst (UTF-16) is at 0x51
