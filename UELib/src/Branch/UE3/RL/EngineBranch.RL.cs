@@ -558,13 +558,22 @@ namespace UELib.Branch.UE3.RL
                 // (the parser still needs to consume the 2 bytes here so the decompile can
                 // reconstruct the goto target).
                 { 0x5D, typeof(JumpToken) },
-                // 0x5E: was AlternativeExtendedNativeFunctionToken (sub_byte + 5000). Binary
-                // RE: byte 0x5E in the runtime dispatch is a UObject-property-access handler
-                // (sub_7FF6CD309510), not a chained native dispatcher. The +5000 indexes don't
-                // exist in GNatives. Mapping to NothingToken eliminates ghost natives, parse
-                // remains 100% clean. Real natives go through byte 0x71 (chained dispatcher to
-                // GNatives[256+sub_byte]).
-                { 0x5E, typeof(NothingToken) },
+                // 0x5E: VERIFIED FieldToken-shape (5 disk bytes = 1 op + 4-byte UProperty
+                // index, expanded to 8 bytes in-memory via AlignObjectSize).
+                // GNatives[0x5E] = sub_7FF6CD309510 reads `*(_DWORD**)Code`, advances Code
+                // by 8 in-memory. Has two runtime paths gated on `v4[30] & 0x100`
+                // (UProperty::PropertyFlags & CPF_OutParm):
+                //   * IF flag set: walks `a2[9]` (FFrame OutParms-like list) for matching
+                //     UProperty, sets the global accessor target to the matched node.
+                //   * ELSE: `qword_..._D7B0 = a2[6] + v4[38]` — Locals frame + property
+                //     offset, identical to 0x65 LocalVariable's runtime.
+                // It's the unified locals/out-param accessor, sister to 0x65 (locals-only)
+                // and 0x11 (out-param-only). Mapping to LocalVariableToken so the property
+                // name renders correctly. Was wrongly NothingToken (1-byte leaf), under-
+                // consuming 4 bytes per occurrence — produced garbage like the orphan
+                // `1577058308` in Online_X.CreateUniqueNetID where IntConstToken was
+                // mis-aligned to read 0x5E's payload.
+                { 0x5E, typeof(LocalVariableToken) },
                 // 0x5F: BadToken in baseline RL — tied across all candidates.
                 { 0x5F, typeof(LocalVariableToken) },
                 // 0x60: VERIFIED VectorConst or RotationConst (reads 12 bytes = 3 INTs).
@@ -582,9 +591,23 @@ namespace UELib.Branch.UE3.RL
                 // PRI_TA.PostBeginPlay's `CarDistanceTracker = none; self Class'X'`
                 // pattern; affects most class-instance construction sites).
                 { 0x61, typeof(NewExpressionTokenRL) },
-                // 0x62: AssertToken-like shape (1 sub + small payload). Tied across many
-                // 1-sub shapes; AssertToken edged by 1 clean function.
-                { 0x62, typeof(AssertToken) },
+                // 0x62: VERIFIED 8-byte FName leaf — compact delegate-function reference.
+                // GNatives[0x62] = sub_7FF6CD2F6FC0 reads `*(qword*)Code`, advances Code
+                // by 8 bytes, builds `{context=this, name=qword, 0}` and dispatches a
+                // property accessor (sub_7FF6CD2A9C90). The qword IS an FName (function
+                // name to bind as a delegate). Wire format: 1 op + 8 raw bytes = 9 bytes
+                // total, matching NameConst-shape but rendered as a bare function name
+                // (no single quotes) for delegate-RHS contexts.
+                // Was wrongly AssertToken (u16 + byte payload = 4 storage bytes) which
+                // produced `Foo.__Event*__Delegate = assert();` everywhere a delegate
+                // was bound, with the 5 unread payload bytes orphaning as
+                // ContextAwareReturnTokenRL chains. Visible in
+                // AntiCheatMessenger_TA.PostBeginPlay (3 occurrences),
+                // AntiCheatManager_TA.__Construct_0x1 (~6 occurrences), and many other
+                // classes that subscribe engine-event delegates. The legitimate
+                // `assert(condition, msg1, msg2)` rendering is at byte 0x2D
+                // (AssertExpressionTokenRL with 3 sub-exprs), unaffected by this remap.
+                { 0x62, typeof(DelegateFunctionRefTokenRL) },
                 { 0x63, typeof(IntConstByteToken) },
                 // 0x64: VERIFIED 4-byte literal reader (IntConst- or FloatConst-shape).
                 // GNatives[0x64] = sub_7FF6CD2F6DE0 reads `*(unsigned int*)Code` (4 bytes), writes
