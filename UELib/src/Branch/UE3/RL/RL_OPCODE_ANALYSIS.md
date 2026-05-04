@@ -24,6 +24,19 @@
 >
 > ### Decompile-side improvements (this session)
 >
+> - **While-loop reconstruction** in `JumpIfNotToken` / `JumpToken` — cooked
+>   UE3 emits `while(cond) { body }` as test-load + JumpIfNot + body +
+>   goto-back. The existing IsLoop detection required exact
+>   `CodeOffset == JumpIfNot.Position`, which fails on cooked output (target
+>   is the test-expression's first load, a few bytes before the JumpIfNot
+>   opcode). Loosened to `CodeOffset <= Position`, extended the Loop nest
+>   end to cover the back-edge so the closing `}` lands after it, stashed
+>   `LoopBackEdge` reference on JumpIfNot for precise back-edge suppression
+>   (so `continue` statements aren't silently dropped). Now: a `continue`
+>   inside a loop body renders as `continue`; only the true back-edge is
+>   suppressed. SetLoadouts's three array-init loops fold cleanly into
+>   `while(Index < 2) { body; ++Index; }`.
+>
 > - **`ContextAwareReturnTokenRL`** at byte 0x00 — uses three signals to
 >   distinguish EX_Return from alignment padding: `VariadicCallDepth`
 >   (incremented around `FunctionToken.DeserializeCall`), `DeserializationDepth`
@@ -51,7 +64,7 @@
 > | `Car_TA.PostBeginPlay`                      | PERFECT — clean if/else, AttachComponent, ObjectProvider.Subscribe(...) |
 > | `PRI_TA.HandlePlayerNameChanged`            | PERFECT |
 > | `Ball_TA` (whole-class decompile)           | All structs, properties, replication blocks, delegates, defaultproperties block render structurally correct |
-> | `PRI_TA.SetLoadouts`                        | for-loops as `Index = 0; if(Index < 2) { body; ++Index; } goto J0xN;` — body and structure correct, just not folded into `for` syntax |
+> | `PRI_TA.SetLoadouts`                        | for-loops now fold into `Index = 0; while(Index < 2) { body; ++Index; }` — clean while-loop syntax, no orphan `goto J0xN`. (Folding the init+update into a `for(;;)` is task-deferred — the while form preserves semantics.) |
 > | `Car_TA.UpdateTeamLoadout`                  | Clean assignments, member access, `return 0;` `return 1;` properly reconstructed |
 > | `Actor.FindEventsOfClass` (Engine.upk)     | 0x21 remapped (was wrongly DynArrayIterator → now StringCastTokenRL); residual `/* unresolved cast */()` is from 0x19 sub-dispatcher (task #5). Real foreach lives at extended-native `0x10 0x0A` and `0x71 0x39`. |
 >
