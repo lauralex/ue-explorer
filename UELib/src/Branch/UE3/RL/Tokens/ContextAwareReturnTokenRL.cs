@@ -42,8 +42,31 @@ public class ContextAwareReturnTokenRL : UStruct.UByteCodeDecompiler.Token
             return;
         }
 
+        // If the IMMEDIATELY-PREVIOUS-IN-STREAM token was a 0x00 in padding
+        // mode at the same depth, we're inside the tail of that padding run.
+        // The check is restricted to stream-consecutive tokens (previous
+        // StoragePosition + 1 == this StoragePosition) so it doesn't
+        // over-trigger on padding 0x00s that lived inside an earlier
+        // variadic call.
+        // NOTE: DeserializeNext adds *this* token to DeserializedTokens
+        // BEFORE calling its Deserialize, so tokens[Count-1] is *this*; the
+        // genuinely-previous token is at Count-2.
+        var tokens = Decompiler.DeserializedTokens;
+        if (tokens.Count >= 2)
+        {
+            var prev = tokens[tokens.Count - 2];
+            if (prev is ContextAwareReturnTokenRL prevContextAware
+                && !prevContextAware._IsReturnContext
+                && prev.StoragePosition + 1 == StoragePosition)
+            {
+                _IsReturnContext = false;
+                return;
+            }
+        }
+
         // Peek one byte without advancing the stream. If it's also 0x00, we're
-        // sitting in a multi-byte padding run — don't consume a sub-expression.
+        // sitting at the head of a multi-byte padding run — don't consume a
+        // sub-expression.
         long savedPosition = stream.Position;
         try
         {
