@@ -38,7 +38,7 @@ public class InstanceDelegateTokenRL : UStruct.UByteCodeDecompiler.Token
         // and render as `none` instead of `Object.*Garbage`. Visible across
         // many delegate-clear sites: `Pawn.PostBeginPlay`, `PRI_TA.PostBeginPlay`,
         // `Car_TA.PostBeginPlay`, `AntiCheatManager_TA.__Construct_0x1`, etc.
-        if (name.StartsWith('*'))
+        if (name.Length > 0 && name[0] == '*')
         {
             return "none";
         }
