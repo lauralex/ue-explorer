@@ -122,7 +122,7 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x58 | `sub_7FF6CD2ED2D0`   | 8-byte UProperty* + object-flag check (DefaultVar)   | `DefaultVariableToken` |
 | 0x59 | `sub_7FF6CD2F5F20`   | FName + state-skip lookup (GlobalFunction)           | `GlobalFunctionToken` |
 | 0x5A | `sub_7FF6CD2F6FA0`   | alias 0x39 (8-byte qword leaf)                       | `LocalVariableToken` |
-| 0x5B | `sub_7FF6CD308170`   | UStruct + sub + u16 + sub (struct default parameter) | `StructDefaultParameterTokenRL` |
+| 0x5B | `sub_7FF6CD308170`   | UStruct + sub + u16 + sub — none-coalescing op (`A ?? B`)  | `StructDefaultParameterTokenRL` |
 | 0x5C | `sub_7FF6CD2F07F0`   | sub-expr + FindLabel (GotoLabel)                     | `GotoLabelToken` |
 | 0x5D | `sub_7FF6CD30D7B0`   | `Code += 2` (no-op jump, possibly EX_JumpIfFilterEditorOnly) | `JumpToken` |
 | 0x5E | `sub_7FF6CD309510`   | 8-byte UProperty + locals/out-param accessor (gated on CPF_OutParm flag) | `LocalVariableToken` (FieldToken-shape, 5 disk + 4 align) |
