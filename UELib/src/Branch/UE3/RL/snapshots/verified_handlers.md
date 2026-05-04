@@ -86,6 +86,15 @@ unique-string fingerprints, byte-read patterns, and structural fingerprints.
 | 0x6B  | sub_7FF6CD2F7340 (32)        | EX_PrimitiveCast      | Reads byte, dispatches into sub-table `funcs_7FF6CD2F735D` (cast-type sub-table). |
 | 0x6C  | sub_7FF6CD2F0210 (116)       | EX_ReturnNothing      | Unique error `"Control reached the end of non-void function"`. |
 
+### Newly verified (later this session)
+
+| Byte  | Handler                      | EX_ name              | Evidence |
+|-------|------------------------------|-----------------------|----------|
+| 0x21  | sub_7FF6CD2F5A40 (179)       | EX_DynArrayIterator (= foreach) | Confirmed via `Actor.FindEventsOfClass` disassembly showing opcode 33 = 0x21 produces `foreach (Evt)`. Already mapped to DynamicArrayIteratorToken — that mapping was correct, just unverified. |
+| 0x32  | sub_7FF6CD2F6180 (189)       | EX_InstanceDelegate (RL fork) | 16-byte payload (UObject* + FName). New token `InstanceDelegateTokenRL` renders as `Object.DelegateName`. |
+| 0x36  | sub_7FF6CD2F7250 (237)       | property setter w/ discard | 8-byte UProperty* + sub-expr; result discarded. New token `PropertySetterDiscardTokenRL` renders as `Property = Expression`. |
+| 0x09  | sub_7FF6CD2F5930 (146)       | comma operator (`A, B`) | Optional 0x20 prefix + 2 sub-exprs. New token `DiscardKeepTokenRL` renders just sub-A; cooker emits this around for-loop init expressions. |
+
 ### Newly verified (this session)
 
 | Byte  | Handler                      | EX_ name              | Evidence |
