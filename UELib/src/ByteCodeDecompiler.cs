@@ -71,6 +71,14 @@ namespace UELib.Core
             public int ScriptPosition { get; private set; }
 
             /// <summary>
+            /// Tracks how deep we are inside variadic native/final function calls
+            /// (incremented on enter, decremented on exit). Used by RL's
+            /// ContextAwareReturnTokenRL to distinguish 0x00 = EX_Return
+            /// (top-level) from 0x00 = alignment padding (inside a call's arg list).
+            /// </summary>
+            public int VariadicCallDepth { get; internal set; }
+
+            /// <summary>
             /// Size of FName in memory (int Index, (>= 343) int Number).
             /// </summary>
             private byte _NameMemorySize = sizeof(int);

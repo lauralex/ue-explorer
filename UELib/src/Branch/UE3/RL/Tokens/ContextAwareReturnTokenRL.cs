@@ -1,0 +1,82 @@
+using UELib.Core;
+
+namespace UELib.Branch.UE3.RL.Tokens;
+
+/// <summary>
+/// Context-aware handler for byte 0x00 in RL bytecode.
+/// <para>
+/// In real RL bytecode, 0x00 appears in three unrelated roles:
+/// <list type="bullet">
+///   <item>At top level immediately before a return-value expression
+///         (<c>0x00 0x2F</c> = `return true;`, <c>0x00 0x1C</c> = `return 0;`).
+///         Looks like baseline EX_Return — needs to consume the next sub-expression.</item>
+///   <item>Inside a variadic native-call argument list, between the last real
+///         argument and the EmptyParm/EndFunctionParms terminator. Looks like
+///         alignment / padding — must NOT consume the EmptyParm or it scrambles
+///         the call's rendering into <c>LogInternal(..., return return ...)</c>.</item>
+///   <item>Between top-level statements as multi-byte alignment padding (often
+///         3–5 consecutive 0x00 bytes). Same constraint as the variadic case —
+///         must not consume neighbouring tokens.</item>
+/// </list>
+/// </para>
+/// <para>
+/// Disambiguation:
+/// <list type="number">
+///   <item>If <see cref="UStruct.UByteCodeDecompiler.VariadicCallDepth"/> &gt; 0
+///         we're inside a call's arg list — always padding.</item>
+///   <item>If the immediate next byte in the stream is also 0x00, this is part of
+///         a multi-byte padding run between statements — padding.</item>
+///   <item>Otherwise, treat as EX_Return and consume the next sub-expression.</item>
+/// </list>
+/// </para>
+/// </summary>
+public class ContextAwareReturnTokenRL : UStruct.UByteCodeDecompiler.Token
+{
+    private bool _IsReturnContext;
+
+    public override void Deserialize(IUnrealStream stream)
+    {
+        if (Decompiler.VariadicCallDepth > 0)
+        {
+            _IsReturnContext = false;
+            return;
+        }
+
+        // Peek one byte without advancing the stream. If it's also 0x00, we're
+        // sitting in a multi-byte padding run — don't consume a sub-expression.
+        long savedPosition = stream.Position;
+        try
+        {
+            byte next = stream.ReadByte();
+            stream.Position = savedPosition;
+            if (next == 0x00)
+            {
+                _IsReturnContext = false;
+                return;
+            }
+        }
+        catch
+        {
+            stream.Position = savedPosition;
+            _IsReturnContext = false;
+            return;
+        }
+
+        _IsReturnContext = true;
+        DeserializeNext(); // return-value expression
+    }
+
+    public override string Decompile()
+    {
+        if (!_IsReturnContext)
+        {
+            return string.Empty;
+        }
+
+        Decompiler.MarkSemicolon();
+        string sub = DecompileNext();
+        // If the consumed sub-expression renders to empty (e.g. EX_ReturnNothing
+        // safety-net at end of function), emit `return;` without trailing space.
+        return string.IsNullOrEmpty(sub) ? "return" : $"return {sub}";
+    }
+}

@@ -27,22 +27,20 @@ namespace UELib.Branch.UE3.RL
 
             var tokenMap = new TokenMap((byte)ExprToken.ExtendedNative + 0x30)
             {
-                // 0x00: HYPOTHESIS revisited.
+                // 0x00: context-aware EX_Return / alignment-padding (RL-specific token).
                 // 0x00 binary handler = default error handler ("Unknown code token"). In real RL
-                // bytecode, 0x00 bytes appear in TWO distinct positions:
-                //   (a) at end-of-statement before a return value (e.g. `0x00 0x2F 0x00 0x6C`
-                //       → `return true; return-nothing-safety-net`) — looks like EX_Return.
-                //   (b) inside variadic native-call argument lists, between the last real arg
-                //       and the EmptyParm/EndFunctionParms terminator — looks like padding /
-                //       alignment fillers.
-                // ReturnToken consumes the next sub-expr, which is right for (a) but breaks (b)
-                // by eating EmptyParm tokens as fake return values, producing
-                // `LogInternal(..., return return return)` artifacts.
-                // Until we can disambiguate (likely needs context-aware parsing — "are we inside
-                // a variadic loop?"), keep NothingToken so (b) stays clean. The tradeoff is
-                // (a)'s `return X;` reconstruction stays broken — orphan IntOne/IntZero
-                // remains. Preferable to scrambling LogInternal output across the entire codebase.
-                { 0x00, typeof(NothingToken) },
+                // bytecode the byte appears in two unrelated roles:
+                //   (a) top-level: immediately before a return-value expression
+                //       (`0x00 0x2F` = `return true;`, `0x00 0x1C` = `return 0;`).
+                //       Looks like baseline EX_Return.
+                //   (b) inside a variadic native-call argument list: alignment padding
+                //       between the last real arg and EmptyParm/EndFunctionParms.
+                //       Must NOT consume the EmptyParm or LogInternal-style calls scramble
+                //       into `LogInternal(..., return return return)`.
+                // ContextAwareReturnTokenRL checks Decompiler.VariadicCallDepth (set by
+                // FunctionToken.DeserializeCall around its parm loop) and renders as
+                // EX_Return at top level / NothingToken inside a call.
+                { 0x00, typeof(ContextAwareReturnTokenRL) },
                 { 0x01, typeof(StateVariableToken) },
                 { 0x02, typeof(IntConstToken) },
                 // 0x03: VERIFIED unmapped (binary handler = default error). Was wrongly

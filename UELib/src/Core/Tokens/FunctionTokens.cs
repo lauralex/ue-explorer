@@ -27,8 +27,21 @@ namespace UELib.Core
 
                 protected virtual void DeserializeCall(IUnrealStream stream)
                 {
-                    DeserializeParms();
-                    Decompiler.DeserializeDebugToken();
+                    // Mark this region so RL's ContextAwareReturnTokenRL can tell that
+                    // an embedded 0x00 byte is variadic alignment padding rather than
+                    // a top-level EX_Return. Increment/decrement around the parm loop
+                    // (and the trailing DebugInfo) so re-entrant variadic calls — a
+                    // function call as another call's argument — keep the depth correct.
+                    Decompiler.VariadicCallDepth++;
+                    try
+                    {
+                        DeserializeParms();
+                        Decompiler.DeserializeDebugToken();
+                    }
+                    finally
+                    {
+                        Decompiler.VariadicCallDepth--;
+                    }
                 }
 
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
