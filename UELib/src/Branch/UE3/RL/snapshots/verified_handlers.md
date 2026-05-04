@@ -149,22 +149,35 @@ two functions Daisy flagged in screenshots:
 
 ## Known remaining decompile artifacts
 
-- **`Index = false` for int locals.** The compiler can emit either 0x1C or
-  0x27 for "write a 4-byte zero"; they share the binary handler. The
-  parser-side picks IntZero or False statically per byte, so an int's
-  `Index = 0` may render as `Index = false` if the cooker chose 0x27.
-  Cosmetic only — semantically `false == 0` in UnrealScript.
-- **Orphan `0` / `1` between statements.** Some 0x00 0x2F / 0x00 0x1C
-  patterns in real bytecode look like `EX_Return 1` / `EX_Return 0` but
-  remapping 0x00 → ReturnToken corrupts variadic argument lists where 0x00
-  is also used as inline padding. Disambiguation needs context-aware parsing
-  (is the byte inside a variadic loop or top-level?). Until then, the
-  IntOne / IntZero leaks out as a bare statement.
-- **Empty if-block bodies on early-exit patterns.** When the user wrote
-  `if (cond) return X;`, the parser sees a JumpIfNot whose body is a
-  return — but our renderer prints `if (cond) {}` followed by an orphan
-  return-value because EX_Return isn't being recognized (same root cause
-  as the orphan `0`/`1` above).
+- **For-loops not folded into `for (init; test; update)` syntax.** The
+  bytecode for a `for (Index = 0; Index < 2; ++Index) { body }` decomposes
+  into `Index = 0; if (Index < 2) { body; ++Index; } goto J0xN;` — all
+  pieces render correctly individually but NestManager doesn't recognize
+  the goto-back pattern as a loop. Tracked as task #43.
+- **0x37 / 0x32 / 0x36 wire formats.** Three GNatives entries with known
+  binary handler addresses but no proper UELib-side token yet:
+  - 0x37: 2 sub-exprs + u16 + variadic body — likely `EX_DynArrayIterator`
+    or `EX_Iterator`. Currently FloatConst (under-reads). Affects foreach
+    loops if any ship in real bytecode.
+  - 0x32: UObject* + FName (16 bytes) — likely `EX_InstanceDelegate`.
+    Currently VectorConst (12 bytes — under-reads 4).
+  - 0x36: UProperty* + sub-expr; result discarded — possibly
+    `EX_DynArrayLength`-set or property setter. Currently VectorConst.
+- **Spawn-call rendering.** Patterns like `X = Spawn(class'Y', self)`
+  sometimes render with the args orphaned across separate lines:
+  `X = none;` then `self` then `Class'Y'` as bare statements. Likely
+  caused by 0x12 / similar variadic-fused tokens not handling the
+  reciever-class arg correctly.
+- **bool `+= 0` / `+= 1` for assignment.** UnrealScript's bool assignment
+  through `bX = false; bX = true;` compiles to bytecode that we currently
+  render as `bX += 0;` / `bX += 1;`. Valid but not idiomatic.
+- **Trailing post-recovery decompile artifacts.** When a sub-expression's
+  parse fails (typically an unmapped native operator), the central
+  recovery loop walks past the failure point. Tokens parsed in the
+  recovered region can render as garbled if-conditions or bare orphan
+  expressions. Visible in `Ball_TA.PostBeginPlay`'s `if (StaticMesh != none)`
+  rendering as `if(@NULL @ return StaticMesh -= )`. The function body
+  itself still parses correctly, only the broken expression is affected.
 
 ## Decompile-side improvements (this session)
 
