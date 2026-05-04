@@ -144,7 +144,18 @@ namespace UELib.Branch.UE3.RL
                 // as `/* unresolved cast */()` and NRE'd, polluting many functions including
                 // Ball_TA.EnableOwnerTranslucency, Actor.FindEventsOfClass, GameInfo.FindPlayerStart.
                 { 0x19, typeof(Tokens.ExtendedNativeFunctionToken) },
-                { 0x1A, typeof(InstanceVariableToken) },
+                // 0x1A: VERIFIED EX_DynamicCast (NOT InstanceVariable).
+                // GNatives[0x1A] = sub_7FF6CD2F70C0 reads 8-byte UClass* + 1 sub-expression
+                // (the value to cast), zeroes the result slot if the target class has the
+                // appropriate cast-flag (0x4000). Real EX_InstanceVariable is at 0x55.
+                // Was wrongly InstanceVariableToken — every cast `Class(value)` rendered as
+                // a plain class-name access, breaking patterns like `SpecialPickup_Targeted_TA(NewPickup)`
+                // in AIController_Soccar_TA.HandleNewPickup which appeared as
+                // `SpecialPickup_Targeted_TA != NewPickup` (just the class name compared to
+                // the value, with the cast operation lost).
+                { 0x1A, typeof(DynamicCastToken) },
+                // 0x1B: 2 sub-exprs + 1 byte + optional debug. Was MetaClassCast (UClass + 1
+                // sub) — wire format mismatch. Conservative passthrough until verified usage.
                 { 0x1B, typeof(MetaClassCastToken) },
                 // 0x1C: VERIFIED IntZero/False (writes 4-byte 0).
                 // GNatives[0x1C] = sub_7FF6CD2F7030 (8-byte function): `*(_DWORD*)a3 = 0;`.
