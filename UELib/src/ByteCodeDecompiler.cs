@@ -79,6 +79,27 @@ namespace UELib.Core
             public int VariadicCallDepth { get; internal set; }
 
             /// <summary>
+            /// Recursion depth of <see cref="DeserializeNext"/>. Depth 1 == called
+            /// from the central function-body loop (top-level statement); depth &gt;
+            /// 1 == called recursively as a sub-expression. Used by RL's
+            /// ContextAwareReturnTokenRL: an 0x00 byte is only EX_Return when it's
+            /// a top-level statement; appearances inside sub-expressions
+            /// (if-condition operands, assignment RHS, native-call args, etc.) are
+            /// always alignment padding.
+            /// </summary>
+            internal int DeserializationDepth { get; private set; }
+
+            /// <summary>
+            /// True for one iteration of the central deserialize loop after a
+            /// per-token parse failure. After recovery, the next byte we read
+            /// can be in unparseable garbage left over from the failed scope —
+            /// treating it as a top-level EX_Return would consume the next
+            /// real token as a fake "return value". Cleared once a non-zero-size
+            /// (i.e. successfully-parsed) token completes.
+            /// </summary>
+            internal bool LastIterationRecovered { get; set; }
+
+            /// <summary>
             /// Size of FName in memory (int Index, (>= 343) int Number).
             /// </summary>
             private byte _NameMemorySize = sizeof(int);
@@ -175,6 +196,9 @@ namespace UELib.Core
                         try
                         {
                             DeserializeNext();
+                            // Successful iteration: clear the post-recovery flag so the
+                            // next 0x00 we encounter is judged on its own merits.
+                            LastIterationRecovered = false;
                         }
                         catch (StackOverflowException exception)
                         {
@@ -202,6 +226,7 @@ namespace UELib.Core
                             // at the next byte. Without this, one throwing token aborts the entire
                             // script — even though most failures (NTL drift, stale import indices)
                             // only corrupt one token's interpretation, not the whole stream.
+                            LastIterationRecovered = true;
                             int bufferPos = (int)(_Buffer.Position - _Container.ScriptOffset);
                             int recovered = bufferPos > ScriptPosition ? bufferPos : ScriptPosition;
                             if (recovered <= posBefore)
@@ -300,7 +325,15 @@ namespace UELib.Core
                 token.Decompiler = this;
                 token.Position = scriptPosition;
                 token.StoragePosition = (int)(_Buffer.Position - _Container.ScriptOffset - 1);
-                token.Deserialize(_Buffer);
+                DeserializationDepth++;
+                try
+                {
+                    token.Deserialize(_Buffer);
+                }
+                finally
+                {
+                    DeserializationDepth--;
+                }
                 token.Size = (short)(ScriptPosition - scriptPosition);
                 token.StorageSize = (short)(_Buffer.Position - _Container.ScriptOffset - token.StoragePosition);
                 token.PostDeserialized();

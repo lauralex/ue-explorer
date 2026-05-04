@@ -42,6 +42,30 @@ public class ContextAwareReturnTokenRL : UStruct.UByteCodeDecompiler.Token
             return;
         }
 
+        // Only treat 0x00 as EX_Return when it's a top-level statement
+        // (DeserializeNext called from the central function-body loop, depth 1).
+        // Recursive calls — sub-expressions of JumpIfNot conditions, Let RHS,
+        // call argument lists not yet bumping VariadicCallDepth, etc. — should
+        // always treat 0x00 as padding so we never accidentally consume an
+        // operand mid-expression.
+        if (Decompiler.DeserializationDepth > 1)
+        {
+            _IsReturnContext = false;
+            return;
+        }
+
+        // After a per-token recovery in the central deserialize loop, the next
+        // byte we read is whatever was left over in the failed scope's
+        // bytecode — usually unparseable garbage from a token whose Deserialize
+        // threw mid-stream. Treating it as a fresh top-level EX_Return would
+        // consume the next real token as a bogus return value (regression
+        // pattern: `if(@NULL @ return StaticMesh -= )` in Ball_TA.PostBeginPlay).
+        if (Decompiler.LastIterationRecovered)
+        {
+            _IsReturnContext = false;
+            return;
+        }
+
         // If the IMMEDIATELY-PREVIOUS-IN-STREAM token was a 0x00 in padding
         // mode at the same depth, we're inside the tail of that padding run.
         // The check is restricted to stream-consecutive tokens (previous
