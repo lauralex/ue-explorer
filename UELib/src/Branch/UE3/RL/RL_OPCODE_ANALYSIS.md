@@ -1,6 +1,129 @@
 # Rocket League opcode analysis
 
-> **STATUS UPDATE (2026-05-04 — primary token map essentially complete)**
+> **STATUS UPDATE (2026-05-04 evening — comprehensive RE pass complete)**
+>
+> Primary opcode map is comprehensively verified against the binary. The
+> per-byte handler-address table for v868 is captured in
+> `snapshots/GNATIVES_SNAPSHOT_v868.md` — that's the source-of-truth for
+> cross-version comparisons.
+>
+> ### What works (sentinel functions verified clean)
+>
+> | Function                                       | Output quality |
+> |------------------------------------------------|----------------|
+> | `Pawn.SpawnDefaultController`                  | PERFECT |
+> | `Pawn.PostBeginPlay`                           | PERFECT (minor `bUsedAsLightFunction.*` synthesized-name artifact) |
+> | `Controller.PostBeginPlay`                     | PERFECT |
+> | `PlayerController.PlayerTick`                  | PERFECT |
+> | `RBActor_TA.PostBeginPlay`                     | PERFECT |
+> | `Car_TA.CreateRumblePickups`                   | PERFECT |
+> | `Car_TA.PostBeginPlay`                         | PERFECT |
+> | `Ball_TA.PostBeginPlay`                        | PERFECT — `if(assert(StaticMesh != none, "...", )) { StaticMesh.ForceMipLevelsToBeResident(); }` |
+> | `Ball_TA.OnCarTouch`                           | PERFECT — `EventCarTouch(self, HitCar, HitType);` |
+> | `Ball_TA.EnableOwnerTranslucency`              | PERFECT structure with `MIC = new(...) Class'X';` and foreach |
+> | `Ball_TA.Explode`                              | mostly correct — `_0x1 = new(...) Class'X';` + dynamic cast `GameInfo_Replay_TA(WorldInfo.Game)` |
+> | `PRI_TA.SetLoadouts`                           | PERFECT — three `while(Index < 2) { body; ++Index; }` loops |
+> | `PRI_TA.PostBeginPlay`                         | PERFECT structurally — `new(...)` patterns all recovered |
+> | `PRI_TA.HandlePlayerNameChanged`               | PERFECT |
+> | `Car_TA.HandleTeamChanged`                     | PERFECT |
+> | `AIController_Soccar_TA.HandleNewPickup`       | PERFECT — `if(SpecialPickup_Targeted_TA(NewPickup) != none)` (DynamicCast) |
+> | full Engine_decrypted.upk + TAGame_decrypted.upk parse-clean rate | very high (no NREs cascading; only individual token failures) |
+>
+> ### Decompile-side improvements landed this session
+>
+> - **While-loop reconstruction** in `JumpIfNotToken` / `JumpToken`. Cooked
+>   `while(cond) { body }` (compiled as test-load + JumpIfNot + body +
+>   goto-back) now folds into clean `while(...)` syntax with precise
+>   back-edge identification. `continue` statements survive (rendered as
+>   `continue` keyword instead of being dropped). Loosened the IsLoop
+>   detection to accept any backward goto with target ≤ JumpIfNot.Position
+>   (the cooker targets the test-expression's first load, a few bytes
+>   before the JumpIfNot opcode).
+>
+> - **`new(...)` operator recognition** at byte 0x61. Wire format: 5 sub-
+>   expressions (Outer, Name, Flags, Class, Template). Was previously
+>   `EmptyDelegateToken` (0 args) which leaked all 5 args as orphan
+>   top-level statements. Affects most class-instance constructions —
+>   `CarDistanceTracker = new(self, , , ) Class'CarDistanceTracker_TA';`
+>   in PRI_TA.PostBeginPlay went from broken to correct.
+>
+> - **`assert(cond, msg, ctx)` recognition** at byte 0x2D. RL's variant
+>   of the assert opcode reads u16 line + 1 byte flag + 3 sub-exprs.
+>
+> - **Dynamic cast recognition** at byte 0x1A — wire format 8-byte UClass
+>   + 1 sub-expr. Recovered `Class(value)` patterns including
+>   `SpecialPickup_Targeted_TA(NewPickup)` in HandleNewPickup and
+>   `GameInfo_Replay_TA(WorldInfo.Game)` in Ball_TA.Explode.
+>
+> - **Dynarray-method dispatcher** at byte 0x19. Routes through the
+>   existing `s_extendedNativeFunctionTokenMap` for `arr.Length`,
+>   `arr.Add()`, `foreach arr(item)`, etc. Was previously
+>   `InterfaceCastToken` which NRE'd on every occurrence — produced
+>   `/* unresolved cast */()` cascades affecting many functions including
+>   `Ball_TA.EnableOwnerTranslucency`'s foreach body.
+>
+> - **Optional-arg-skip** at bytes 0x25 and 0x31. Wire format u16 +
+>   conditional sub-expr (sub-expr present when u16 != 0xFFFF). Renders
+>   empty (the default values are part of the function's signature, not
+>   its body).
+>
+> - **Statement-wrapper** at byte 0x2C. Wire format 1 sub + 1 byte trail
+>   + optional 0x20 debug-info. Renders the wrapped sub-expression as
+>   passthrough.
+>
+> - **Delegate-access** at byte 0x17. Wire format 2 sub-exprs renders as
+>   `{Receiver}.{Function}`.
+>
+> - **Struct-default-parameter** at byte 0x5B. Wire format
+>   UStruct + sub + u16 + sub. Renders the actual-value sub-expression
+>   (the second one). Was previously `VectorConstToken` which produced
+>   `vect(0, 0, -9.52e21)` literals for non-vector LHS types.
+>
+> - **15+ ERROR-handler bytes** mapped to `NothingToken` (was various
+>   over-consuming tokens that cascaded into garbled output). Critical
+>   examples: 0x3D (was VirtualFunction, 8-byte over-read) and 0x3F (was
+>   VectorConst, 12-byte over-read).
+>
+> ### Remaining issues
+>
+> - **Ternary `? :` reconstruction.** Visible as multiple consecutive
+>   `return X;` statements in `Ball_TA.IsGroundHit`, `Ball_TA.Explode`'s
+>   `ExplosionRotation` assignment, and a few other places. UE3 cooks
+>   ternary as `JumpIfNot + Let + Jump + Let` (or similar); NestManager
+>   doesn't currently fold this back into `cond ? then : else`.
+>
+> - **`if(X) {} return Y;` empty-body pattern in some functions** with
+>   complex-cond + early-return. Visible in `Car_TA.UpdateTeamLoadout`'s
+>   first if. Root cause: JumpIfNot's u16 CodeOffset is read on-disk
+>   (Position-space) but the cond's heavy object-pointer expansion makes
+>   the in-memory equivalent diverge — the body's start position lands
+>   *after* the recorded NestEnd.position, so the body renders outside
+>   the if. Not a token-map bug; needs Position/Storage scaling fix in
+>   the JumpIfNot Decompile path or an off-by-2 detection heuristic.
+>
+> - **0x1B / 0x54 wire format.** Currently `MetaClassCastToken` /
+>   `EatReturnValueToken`. Binary handler shared at 0x7FF6CD2F6AE0 reads
+>   2 sub-exprs + 1-byte skip + optional 0x20 debug-info. Wire format
+>   doesn't match `MetaClassCastToken` (which expects UClass + 1 sub).
+>   Effect on output: low — these bytes are uncommon. TBD.
+>
+> - **0x37 wire format.** Verified as 2 sub + u16 + variadic body
+>   (terminator 0x3E) + optional debug. Currently `FloatConstToken`
+>   (under-reads). Not observed in TAGame/Engine fixtures — remap when
+>   first encountered.
+>
+> - **Synthesized FName artifacts.** Patterns like `bUsedAsLightFunction.*`
+>   and `__EventClubUpdated__Delegate = TestRadius.*Distortion` come from
+>   the cooker's synthesized property/delegate names that get rendered
+>   verbatim. Cosmetic only — semantics correct.
+>
+> - **`SpawnInstance(,,, X, Y)` leading commas.** EmptyParm chain for
+>   omitted optional args. Legitimate UnrealScript output but verbose.
+>
+> Original 2026-05-04 morning + 2026-05-03 status blocks below remain
+> valid as historical context.
+
+> **STATUS UPDATE (2026-05-04 morning — primary token map essentially complete)**
 >
 > Almost every primary opcode (0x00..0x6F) is now ground-truthed against the
 > binary's GNatives table at `0x7FF6CF2AA580`. Real RL bytecode decompiles to

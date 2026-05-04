@@ -34,16 +34,108 @@ After decryption, class names in the loaded package have **no namespace prefix**
 
 The Claude Code MCP launches `UELib/MCP/publish/Eliot.UELib.MCP.exe` once per session and holds an exclusive lock on it. So the normal `dotnet publish ... -o UELib/MCP/publish` rebuild fails with "process cannot access the file" while a session is live.
 
-Workflow that works:
+Workflow that works (PowerShell automation — much faster than the manual stop/copy/restart):
 
 1. Make code changes (any project — both `Eliot.UELib` and `Eliot.UELib.MCP` get bundled).
-2. `dotnet publish UELib/MCP/Eliot.UELib.MCP.csproj -c Release -r win-x64 -p:PublishSingleFile=true --self-contained true -o UELib/MCP/publish_new` — publishes alongside `publish/` instead of overwriting it.
-3. Ask the user to: stop Claude Code, copy `publish_new\Eliot.UELib.MCP.exe` over `publish\Eliot.UELib.MCP.exe` (the lock is released once Claude exits), restart Claude Code.
-4. Reload the package in the new MCP session — the handle from before is invalid.
+2. Build into a sibling directory:
+   ```pwsh
+   dotnet publish UELib/MCP/Eliot.UELib.MCP.csproj `
+       -c Release -r win-x64 -p:PublishSingleFile=true --self-contained true `
+       -o UELib/MCP/publish_new
+   ```
+3. Hot-swap: kill the live MCP process, atomically replace the exe, the user reconnects via `/mcp`:
+   ```pwsh
+   Get-Process -Name "Eliot.UELib.MCP" -ErrorAction SilentlyContinue | Stop-Process -Force
+   Start-Sleep -Milliseconds 500
+   Move-Item "UELib\MCP\publish_new\Eliot.UELib.MCP.exe" "UELib\MCP\publish\Eliot.UELib.MCP.exe" -Force
+   ```
+4. Ask the user to run `/mcp` to reconnect. The user's existing handle from before is invalid; reload packages.
 
-`publish_new/` is gitignored-by-convention (don't commit). It exists only so the active session's exe stays untouched until the user does the swap.
+`publish_new/` is gitignored-by-convention (don't commit). It exists only as the build target while `publish/` holds the locked-by-MCP active exe.
 
-## Decompiler/parse-recovery invariants — pitfalls to avoid
+**Cost-saving rule.** Each rebuild+reconnect cycle costs ~30s + the user's attention. Do as much investigation/multi-byte-fixing as possible in one batch before requesting the rebuild — see "Testing workflow" below for the prescribed loop.
+
+## Testing workflow — wrong outputs MUST be caught from your own testing
+
+The decompiler can silently produce structurally-broken output (orphan tokens, wrong assignments, empty if-bodies, mangled cast patterns) without throwing. Don't rely on the user to flag bad outputs. **Decompile a sentinel sample after every batch of token-map changes and compare against the prior baseline before declaring done.**
+
+### Sentinel function set (covers most opcode shapes)
+
+These functions span the common bytecode patterns. After each rebuild, decompile each and confirm no regression:
+
+| Function                                       | Tests                                                              |
+|------------------------------------------------|--------------------------------------------------------------------|
+| `Pawn.SpawnDefaultController` (Engine_decrypted) | Baseline UE3 — if-then-return + Spawn() + super calls             |
+| `Pawn.PostBeginPlay` (Engine_decrypted)        | super(...).PostBeginPlay() + nested if + delegate-property access  |
+| `Controller.PostBeginPlay`                     | nested if + simple assignments                                      |
+| `PlayerController.PlayerTick`                  | multi-level nested if + native operator chains                     |
+| `RBActor_TA.PostBeginPlay`                     | super(SpecificClass).PostBeginPlay() + simple if                   |
+| `Car_TA.CreateRumblePickups`                   | static-method call with multi-arg pattern                           |
+| `Car_TA.PostBeginPlay`                         | NameplateComponent + AttachComponent + multi-arg calls             |
+| `Ball_TA.PostBeginPlay`                        | `assert(cond)` (0x2D), `if(...) {...}`                              |
+| `Ball_TA.OnCarTouch`                           | optional-arg-skip (0x31) + super-call                              |
+| `Ball_TA.EnableOwnerTranslucency`              | foreach + `new(...)` + multi-statement body                        |
+| `Ball_TA.Explode`                              | `new(...)`, dynamic-cast `Class(value)`, multi-arg Spawn variant   |
+| `Ball_TA.IsGroundHit`                          | ternary `? :` (currently broken — sentinel for that work)          |
+| `PRI_TA.SetLoadouts`                           | `while(...)` loops with `++Index` updates                           |
+| `PRI_TA.PostBeginPlay`                         | many `new(...)` patterns + optional default args                   |
+| `PRI_TA.HandlePlayerNameChanged`               | nested if + GetSingleton + comparison                              |
+| `Car_TA.HandleTeamChanged`                     | EventSubscribe + delegate-access + multi-arg call                  |
+| `Car_TA.GetPreviewTeamIndex`                   | StructDefaultParameter (0x5B) + null-check + cast                  |
+| `Car_TA.UpdateTeamLoadout`                     | early-return-from-if + complex-cond + while-loop body              |
+| `AIController_Soccar_TA.HandleNewPickup`       | nested cast + delegate-property assignment + `if` chain            |
+| `Actor.FindEventsOfClass` (Engine_decrypted)   | foreach (extended-native, not byte 0x21!)                          |
+
+### Loop
+
+```
+while not done:
+  edit token map / token classes
+  dotnet publish ... -o publish_new
+  swap exe + reconnect /mcp
+  for each sentinel function:
+    decompile_function(class, function)
+    eyeball for: orphan tokens, "/* truncated */", "/* unresolved cast */",
+                 empty if/while bodies, vect() with absurd values,
+                 ".*" inside operator slots, multiple consecutive `return`,
+                 `__NFUN_NNN__` ghost natives, bare names with no operator
+  if any regression: revert, retry differently
+```
+
+### Output smells (red flags)
+
+- **`/* unresolved cast */()`** — current 0x19 (now dynarray dispatcher) was producing this; if it reappears, that byte was remapped wrong.
+- **`vect(0, 0, -9.52e21)`** literal where the LHS isn't a vector — a multi-byte-read token (VectorConst, RotationConst) was placed at a byte that doesn't actually emit 12 bytes of payload.
+- **`obj.*Name`** with a star — `DelegatePropertyToken` rendering with a synthesized FName from the import table; sometimes legitimate, sometimes a name-resolution artifact.
+- **Empty `{}` followed by an orphan `return X;`** — the JumpIfNot's CodeOffset placed the body bound BEFORE its actual content (not a token-map issue, a position/storage scaling thing — see "Position vs Storage" below).
+- **`,,,,,` with leading/trailing commas inside a call** — usually `EmptyParmToken` chain for omitted optional args; legitimate but verbose.
+- **`__NFUN_<index>__(...)`** — a chained-native dispatcher emitted a placeholder for a native at an index that has no real entry in GNatives. Typically means an over-consuming primary opcode mapping is reading bytes that the parser then dispatches as natives.
+- **Bare `.` `=` `==` operators dangling** — a 2-or-more-sub Let/Comparison consumed only one sub successfully and the operator orphans.
+
+### When testing reveals a bad mapping
+
+Always verify against the **binary handler**, not the rendered output. The 0x21 case is the canonical lesson: it was mapped to `DynamicArrayIteratorToken` because the rendered text said `foreach`, but the binary handler at `GNatives[0x21]` reads only 1 sub-expression — the `foreach` was a *consequence* of the wrong mapping, not the evidence for it. Use `mcp__ida-pro-mcp__decompile` on `GNatives[byte * 8] -> handler_addr` and read the actual sub-expression count + payload reads.
+
+## Pitfalls — read before mapping a new byte
+
+### Tautological mapping (the 0x21 trap)
+A byte mapping is *tautological* when it's chosen because the rendered output looks plausible, not because the binary handler actually has that wire format. The 0x21 case: rendered as `foreach` because mapped to `DynamicArrayIteratorToken`, which made the rendered text say `foreach`, which "verified" the mapping. The binary handler at `GNatives[0x21]` reads only **one** sub-expression — incompatible with DynArrayIterator's 4-sub + byte + u16 layout. Always derive the wire format from `mcp__ida-pro-mcp__decompile` of the handler, never from the rendered output.
+
+### Position vs Storage scaling
+Cooked RL bytecode stores object pointers as 4-byte indices on disk but expands them to 8-byte pointers in memory. The parser tracks both `Position` (in-memory, after expansion) and `StoragePosition` (on-disk, before expansion). They diverge as the parser encounters object/property reads.
+
+JumpIfNot's u16 `CodeOffset` is read from the on-disk u16 but interpreted as an in-memory `Position`. For functions with deep object-laden conditions, this can place the if-body's `NestEnd` offset *before* the body's actual content (visible as `if(...) {} return X;` empty-body patterns where the `return` is the actual if-body). Don't try to fix this with token-map remaps — the bytes are parsed correctly; the issue is the offset interpretation.
+
+### NRE recovery is load-bearing
+The central deserialize loop in `ByteCodeDecompiler.cs` catches per-token exceptions and resyncs `ScriptPosition` to the buffer cursor (or +1 to guarantee progress). Many existing tests assume this catches drift from NTL mismatches, stale import-table indices, etc. **Don't add a `break` in the catch branch** — that was the original behavior and it killed parsing of every function that hit a recoverable error.
+
+### Byte counts, not byte values
+When picking a token class for a newly-RE'd byte, the binary's wire format defines the byte count and structure. UE token classes are interchangeable as long as their `Deserialize` methods consume the same bytes. Two different bytes with identical wire formats can map to the same token class — the dispatch lookup is by byte, the `Deserialize` is by class.
+
+### Variadic terminator (0x3E)
+`EndFunctionParmsToken` at 0x3E is the variadic-call argument-list terminator. `FunctionToken.DeserializeCall` does an `is EndFunctionParmsToken` type check to end the parm loop. **Don't map any other byte to `EndFunctionParmsToken`** — doing so causes function calls to terminate early when that byte appears in the args. (Historical bug: 0x45 was wrongly mapped to `EndFunctionParmsToken`, and any function with a 0x45 byte in its args got truncated.)
+
+### Decompiler/parse-recovery invariants
 
 The bytecode parse and decompile pipeline has been hardened to recover from per-token failures (NTL drift, stale import-table indices, unmapped opcode bytes). When making further changes, keep these invariants:
 
@@ -55,7 +147,40 @@ The bytecode parse and decompile pipeline has been hardened to recover from per-
 
 ## Current opcode-mapping state
 
-`RL_OPCODE_ANALYSIS.md` in `UELib/src/Branch/UE3/RL/` is the working note that captures (a) the IDA reverse-engineering trail (and why `sub_7FF6CD38C840` turned out to be `FScriptSerializer`, *not* the on-disk walker), (b) what's verified working on the current build, and (c) the gap list of unresolved primary opcode bytes (~14 lower-frequency bytes plus the suspect `0x45 = EndFunctionParms` map entry). Read it before adding new token mappings — it documents what was tried, what worked, and what to investigate next.
+Three documents under `UELib/src/Branch/UE3/RL/` capture the state and methodology:
+
+- **`snapshots/GNATIVES_SNAPSHOT_v868.md`** — full per-byte handler-address table for the current build. **Read this first when porting to a new RL version.** It lists every primary opcode 0x00..0x6F with its binary handler address, observed wire format, and current token mapping. The "Cross-version comparison procedure" section at the bottom describes how to recompute the byte→token map for a new build by matching handler addresses (which represent fixed semantics) rather than re-reverse-engineering each handler.
+- **`RL_OPCODE_ANALYSIS.md`** — working note with session-by-session changelog, what was tried, what worked, decompile-side improvements, and remaining issues. Read this for context on *why* a mapping is what it is.
+- **`snapshots/verified_handlers.md`** — historical per-byte verification trail (older format; the snapshot file supersedes it for cross-version use).
+
+Read these before adding new token mappings.
+
+## Opcode rotation across game versions
+
+RL rotates its UnrealScript opcode permutation across patches — the same `EX_Let` semantics that lived at byte `0x4C` in v868 might live at `0x37` in v900. The token map in `EngineBranchRL.BuildTokenMap` is build-specific. When the user upgrades to a newer RL build:
+
+1. **Dump the new GNatives table.** Find the new dispatcher base by searching for the `funcs_X[v3]` indexing pattern in `UStruct::SerializeExpr` (or grep for the "Unknown code token %02X" string and follow xrefs to the error handler — the error handler appears in many GNatives slots and anchors the table).
+2. **Compare against the v868 snapshot** in `GNATIVES_SNAPSHOT_v868.md`. For each handler address from v868, find which byte in the new table points to that same handler (modulo ASLR). When a known handler appears at a new byte index, that byte rotated.
+3. **Update `BuildTokenMap`** to the new bytes for the same handler→token mapping.
+4. **Verify with the sentinel function set** (see "Testing workflow" above). If any baseline function regresses, the mapping is wrong somewhere.
+
+The handler-address table in `GNATIVES_SNAPSHOT_v868.md` is the **stable** view — the byte values are not. Anchors (unique runtime fingerprint strings) listed at the bottom of the snapshot file are the most reliable way to identify a specific handler in a fresh dump.
+
+## Binary RE methodology
+
+When investigating a byte that the decompiler outputs garbage for:
+
+1. **Disassemble the function** showing the broken output via `mcp__uelib__disassemble_function`. Identify the suspect token's `opcode_byte` value.
+2. **Look up the handler.** `addr = 0x7FF6CF2AA580 + opcode_byte * 8` in IDA. Read the qword there to get the handler function address.
+3. **Decompile the handler.** `mcp__ida-pro-mcp__decompile(addr=handler)` shows what it reads from the script stream:
+   - `funcs_X[v]` calls = sub-expression dispatches (each = 1 byte sub-opcode + variable payload).
+   - `*Code` / `++Code` / `Code += N` patterns = direct byte reads (counted into the wire format).
+   - 8-byte qword reads = either UObject*, UProperty*, UClass*, FName, or a raw 8-byte literal.
+   - Calls to `sub_7FF6CD317F00` (FFrame::ReadVariableSize) = UField* + 1 byte type.
+   - Sub-table dispatchers (`funcs_Y[v]` where Y != GNatives) = secondary lookups for primitive cast / dynarray method / etc.
+4. **Match against baseline EX_** — compare to stock UE3 `SerializeExpr` cases (or to other RL handlers with the same shape).
+5. **Pick / write a token class** that matches the wire format exactly. Map the byte in `BuildTokenMap`.
+6. **Test.** Decompile a function that contains the byte and check the output. If the output is broken, **don't tweak the rendering to make it look right** — re-verify the binary handler. The 0x21 lesson applies: tautological mapping causes cascading errors.
 
 ## Solution layout
 
