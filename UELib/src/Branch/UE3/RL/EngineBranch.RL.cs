@@ -128,7 +128,14 @@ namespace UELib.Branch.UE3.RL
                 // a runtime dispatch path because the array-element access logic is identical
                 // for static and dynamic arrays at this level.
                 { 0x16, typeof(DynamicArrayElementToken) },
-                { 0x17, typeof(DelegatePropertyToken) },
+                // 0x17: VERIFIED 2-sub-expr delegate-access (NOT DelegatePropertyToken).
+                // GNatives[0x17] = sub_7FF6CD2F1580 dispatches 2 sub-expressions then walks
+                // the receiver's delegate-list at +16 to locate matching entries. Wire
+                // format = 2 sub-exprs. New token DelegateAccessTokenRL renders as
+                // `{Receiver}.{Function}`. Was wrongly DelegatePropertyToken (8-byte FName +
+                // 1 sub) which NRE'd in Car_TA.HandleTeamChanged producing ` += ; self`
+                // orphans inside the EventSubscribe LHS.
+                { 0x17, typeof(DelegateAccessTokenRL) },
                 // 0x18: VERIFIED unmapped (binary handler = default error). Was wrongly
                 // ConditionalToken (3 sub-exprs + 2 u16s — heavily over-consumed when this
                 // byte appeared in real bytecode, cascading into garbled if/while bodies).
@@ -529,8 +536,15 @@ namespace UELib.Branch.UE3.RL
                 // 0x5A: many candidates tied at the same clean count.
                 // LocalVariableToken (4-byte UProperty*) chosen by frequency.
                 { 0x5A, typeof(LocalVariableToken) },
-                // 0x5B: 12-byte payload — Vector/RotationConst shape.
-                { 0x5B, typeof(VectorConstToken) },
+                // 0x5B: VERIFIED 8-byte UStruct + 2 sub-exprs + u16 (NOT VectorConst).
+                // GNatives[0x5B] = sub_7FF6CD308170 reads UStruct* (8 bytes), dispatches
+                // sub-1 (default), reads u16 (byte size of next sub), conditionally
+                // dispatches sub-2 (actual value) based on a struct comparison. New token
+                // StructDefaultParameterTokenRL renders sub-2 (the actual computed value).
+                // Was wrongly VectorConstToken (12 bytes — produced nonsense literals like
+                // `ControllerRef = vect(0, 0, -9.52e21)` in Car_TA.GetPreviewTeamIndex
+                // where the LHS was a PlayerController, not a Vector).
+                { 0x5B, typeof(StructDefaultParameterTokenRL) },
                 // 0x5C: VERIFIED GotoLabel (1 sub-expr — label name).
                 // GNatives[0x5C] = sub_7FF6CD2F07F0 dispatches a sub-opcode (the label name expr),
                 // then calls vtable[73] (this->FindLabel(name)) and prints "GotoLabel (%s): Label
