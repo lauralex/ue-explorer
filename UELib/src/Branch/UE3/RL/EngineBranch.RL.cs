@@ -199,9 +199,18 @@ namespace UELib.Branch.UE3.RL
                 // 8-byte zero write, the EX_NoObject pattern. Was wrongly mapped to New
                 // (which reads four sub-expressions).
                 { 0x23, typeof(NoObjectToken) },
-                { 0x24, typeof(DeprecatedTokenRL) },
-                { 0x25, typeof(FalseToken) },
-                { 0x26, typeof(EndParmValueToken) },
+                // 0x24: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // DeprecatedTokenRL which over-consumed bytes per occurrence.
+                { 0x24, typeof(NothingToken) },
+                // 0x25: VERIFIED u16 + conditional sub-expression — same shape as 0x31.
+                // GNatives[0x25] = sub_7FF6CD2F0590 reads u16; if not 0xFFFF dispatches one
+                // sub-expression. This is the actual binary location of the optional-arg-skip
+                // pattern. Was wrongly FalseToken (1-byte leaf — under-consumed by 4+ bytes).
+                { 0x25, typeof(OptionalArgSkipTokenRL) },
+                // 0x26: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // EndParmValueToken which is a 1-byte leaf — safe but its presence in the
+                // parser falsely triggers `EX_EmptyParmValue` rendering as a comma.
+                { 0x26, typeof(NothingToken) },
                 // 0x27: VERIFIED 4-byte-zero leaf (aliased with 0x1C — same runtime handler).
                 // Picking IntZeroToken (renders "0") rather than FalseToken (renders "false")
                 // because empirically the cooker emits 0x27 for int-zero contexts (for-loop
@@ -262,7 +271,11 @@ namespace UELib.Branch.UE3.RL
                 // GNatives[0x2F] = sub_7FF6CD2F7040 (8-byte function): `*(_DWORD*)a3 = 1;`.
                 // Aliased with 0x3A (same handler). Was wrongly mapped to GotoLabel.
                 { 0x2F, typeof(IntOneToken) },
-                { 0x30, typeof(NativeParameterToken) },
+                // 0x30: VERIFIED VectorConst-shape (reads 12 bytes = 3 INTs).
+                // GNatives[0x30] = sub_7FF6CD2F9C50 reads three consecutive 4-byte ints into
+                // a3[0], a3[1], a3[2]. Was wrongly NativeParameterToken (which has different
+                // wire format).
+                { 0x30, typeof(VectorConstToken) },
                 // 0x31: VERIFIED u16 + conditional sub-expression (NOT InstanceDelegate).
                 // GNatives[0x31] = sub_7FF6CD2F0590 reads a u16; if it's 0xFFFF the handler
                 // returns without further bytes (skipped/optional), otherwise dispatches a
@@ -279,8 +292,14 @@ namespace UELib.Branch.UE3.RL
                 // UE3 EX_InstanceDelegate carries only the FName). Was wrongly VectorConst
                 // (12 bytes — under-read 4 bytes per occurrence).
                 { 0x32, typeof(InstanceDelegateTokenRL) },
-                { 0x33, typeof(AssertTokenRL) },
-                { 0x34, typeof(LetDelegateToken) },
+                // 0x33: VERIFIED 1-sub-expr DynArray-result wrapper. Reads 1 sub-expr,
+                // then accesses dynarray-result globals + does a vtable call. Logs
+                // "Result given to DynArrayResult method". Conservative mapping —
+                // EatReturnValue (1-sub passthrough) until full semantics understood.
+                { 0x33, typeof(EatReturnValueToken) },
+                // 0x34: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // LetDelegateToken (2 sub-exprs + cleanup — over-consumed).
+                { 0x34, typeof(NothingToken) },
                 // 0x35: FNAME (8-byte) shape — tied across NameConst / Virtual / Global
                 // function. Picked NameConstToken (simplest leaf).
                 { 0x35, typeof(NameConstToken) },
@@ -315,11 +334,12 @@ namespace UELib.Branch.UE3.RL
                 // byte alignment, not semantics).
                 { 0x3A, typeof(TrueToken) },
                 { 0x3B, typeof(ObjectConstToken) },
-                { 0x3C, typeof(TwoStepToken) },
-                // 0x3D: tied across many FNAME-shape (8-byte) candidates — Virtual /
-                // Global / Name / InstanceDelegate. Pick VirtualFunctionToken since the
-                // bytes around 0x3D often look like an inline function call.
-                { 0x3D, typeof(VirtualFunctionToken) },
+                // 0x3C: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // TwoStepToken (which over-consumes).
+                { 0x3C, typeof(NothingToken) },
+                // 0x3D: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // VirtualFunctionToken (8-byte FName — over-consumed 8 bytes per occurrence).
+                { 0x3D, typeof(NothingToken) },
                 // 0x3E: VERIFIED variadic terminator (EndFunctionParms).
                 // GNatives[0x3E] = sub_7FF6CD2F00B0 is `qword_..._D7B8 = 0; --Code;` — un-consume
                 // pattern of a parser-side terminator. Two GNatives variadic-loop handlers
@@ -327,8 +347,9 @@ namespace UELib.Branch.UE3.RL
                 // Was wrongly mapped to IntZero by score-mapping (which only measured byte
                 // alignment, not semantics).
                 { 0x3E, typeof(EndFunctionParmsToken) },
-                // 0x3F: 12-byte payload — Vector/RotationConst shape.
-                { 0x3F, typeof(VectorConstToken) },
+                // 0x3F: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // VectorConstToken (12 bytes — over-consumed badly per occurrence).
+                { 0x3F, typeof(NothingToken) },
                 // 0x40: VERIFIED DelegateFunction (1 byte + UProperty* + FName).
                 // GNatives[0x40] = sub_7FF6CD2F5F90 reads 1 byte (v8 — local-prop flag), 8 bytes
                 // (v10 — UProperty*), then 8 bytes (v13 — FName for function name), and dispatches
@@ -440,7 +461,12 @@ namespace UELib.Branch.UE3.RL
                 // the canonical EX_UnicodeStringConst runtime behavior.
                 // Was wrongly mapped to TrueToken; True is now at 0x3A.
                 { 0x51, typeof(UnicodeStringConstToken) },
-                { 0x52, typeof(DynamicCastToken) },
+                // 0x52: VERIFIED 1-sub-expr passthrough (NOT DynamicCast).
+                // GNatives[0x52] = sub_7FF6CD2ED450 reads 1 sub-expr and writes 0 to result
+                // slot. Same shape as 0x15 (sub_7FF6CD2F59D0 — also a 1-sub-discard wrapper).
+                // DynamicCast in baseline UE3 has wire format `1 byte + UClass* + 1 sub` —
+                // doesn't match. Mapping to EatReturnValue (1-sub passthrough).
+                { 0x52, typeof(EatReturnValueToken) },
                 // 0x53: VERIFIED StructCmpEq/Ne (8-byte UStruct* + 2 sub-exprs + struct comparison).
                 // GNatives[0x53] = sub_7FF6CD2F6240 reads 8-byte UStruct*, allocates two struct
                 // buffers, dispatches sub-opcode A (writes to buf1), dispatches sub-opcode B
@@ -462,7 +488,13 @@ namespace UELib.Branch.UE3.RL
                 // separator — semantically wrong, and the over-consumption (8 missed bytes per
                 // occurrence) was scrambling downstream tokens.
                 { 0x55, typeof(InstanceVariableToken) },
-                { 0x56, typeof(DebugInfoToken) },
+                // 0x56: VERIFIED 8-byte FName + state-fn-call (NOT DebugInfo).
+                // GNatives[0x56] = sub_7FF6CD2F5B00 reads 8-byte FName, calls a state-aware
+                // logger that prints "State function '%s' called while not in declared state."
+                // Shape is identical to NameConst (8-byte qword leaf) — the state check is
+                // runtime-only behavior, doesn't affect parsing. Was wrongly DebugInfoToken
+                // (13-byte payload — over-consumed 5 bytes per occurrence).
+                { 0x56, typeof(NameConstToken) },
                 // 0x57: VERIFIED Switch (UProperty* + property type + sub-expr + case loop).
                 // GNatives[0x57] = sub_7FF6CD2F0390 reads 9 bytes via sub_7FF6CD317F00 (UField* +
                 // property type byte), dispatches sub-opcode (the switch-value expression), then
@@ -515,7 +547,16 @@ namespace UELib.Branch.UE3.RL
                 // result fields a3[0..2]. Was wrongly mapped to EmptyParm (a 1-byte leaf).
                 // Picking VectorConst as the more common case in scripted code.
                 { 0x60, typeof(VectorConstToken) },
-                { 0x61, typeof(EmptyDelegateToken) },
+                // 0x61: VERIFIED `new` expression (NOT EmptyDelegate).
+                // GNatives[0x61] = sub_7FF6CD3082F0 dispatches 5 sub-expressions
+                // (Outer, Name, Flags, Class, Template) and logs
+                // "No class passed to 'new' operator". New token NewExpressionTokenRL
+                // renders as `new(Outer, Name, Flags, Template) Class`. Was wrongly
+                // EmptyDelegateToken which read 0 args — every `new(...)` call leaked
+                // its 5 sub-expressions as orphan top-level statements (visible in
+                // PRI_TA.PostBeginPlay's `CarDistanceTracker = none; self Class'X'`
+                // pattern; affects most class-instance construction sites).
+                { 0x61, typeof(NewExpressionTokenRL) },
                 // 0x62: AssertToken-like shape (1 sub + small payload). Tied across many
                 // 1-sub shapes; AssertToken edged by 1 clean function.
                 { 0x62, typeof(AssertToken) },
@@ -539,7 +580,9 @@ namespace UELib.Branch.UE3.RL
                 // then `*(_DWORD*)(a2+56) = 0;` (clears a flag — likely the "boolean coercion"
                 // marker used by BoolVariable's runtime). Self is now correctly at 0x1F.
                 { 0x66, typeof(BoolVariableToken) },
-                { 0x67, typeof(SkipFunctionTokenRL) },
+                // 0x67: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // SkipFunctionTokenRL (which over-consumed bytes).
+                { 0x67, typeof(NothingToken) },
                 // 0x68: VERIFIED unmapped (binary handler = default error "Unknown code token").
                 // GNatives[0x68] = sub_7FF6CD31ACB0 (the default error handler). Should never
                 // appear in valid bytecode; if it does, treat as a 1-byte leaf (NothingToken)
