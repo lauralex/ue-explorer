@@ -141,9 +141,28 @@ namespace UELib.Core
                 {
                     _Buffer = _Container.LoadBuffer();
                     _Buffer.Seek(_Container.ScriptOffset, SeekOrigin.Begin);
+                    // ByteScriptSize is the expanded (memory-layout) size, in bytes, of all the
+                    // tokens this function would occupy in memory; DataScriptSize is the on-disk
+                    // byte count actually serialized into the package. The two diverge in cooked
+                    // UE3 packages because object/name references on disk use compact (4-byte)
+                    // indexes while the memory layout reserves 8-byte pointer slots — so
+                    // ByteScriptSize is consistently larger. The loop must use DataScriptSize as
+                    // the buffer bound or it keeps reading into the next function's bytes,
+                    // emitting trailing orphan tokens like "67109385" past the real function end.
                     int scriptSize = _Container.ByteScriptSize;
+                    int diskBytes = _Container.DataScriptSize > 0
+                        ? _Container.DataScriptSize
+                        : scriptSize;
+                    // The loop walks two cursors: ScriptPosition (alignment counter, can over-
+                    // count for compact disk indexes) and the underlying buffer position
+                    // (bytes actually consumed from disk). Honor both bounds.
                     while (ScriptPosition < scriptSize)
                     {
+                        long bufferOffset = _Buffer.Position - _Container.ScriptOffset;
+                        if (bufferOffset >= diskBytes)
+                        {
+                            break;
+                        }
                         int posBefore = ScriptPosition;
                         try
                         {

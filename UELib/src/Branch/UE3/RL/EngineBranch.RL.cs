@@ -27,6 +27,21 @@ namespace UELib.Branch.UE3.RL
 
             var tokenMap = new TokenMap((byte)ExprToken.ExtendedNative + 0x30)
             {
+                // 0x00: HYPOTHESIS revisited.
+                // 0x00 binary handler = default error handler ("Unknown code token"). In real RL
+                // bytecode, 0x00 bytes appear in TWO distinct positions:
+                //   (a) at end-of-statement before a return value (e.g. `0x00 0x2F 0x00 0x6C`
+                //       → `return true; return-nothing-safety-net`) — looks like EX_Return.
+                //   (b) inside variadic native-call argument lists, between the last real arg
+                //       and the EmptyParm/EndFunctionParms terminator — looks like padding /
+                //       alignment fillers.
+                // ReturnToken consumes the next sub-expr, which is right for (a) but breaks (b)
+                // by eating EmptyParm tokens as fake return values, producing
+                // `LogInternal(..., return return return)` artifacts.
+                // Until we can disambiguate (likely needs context-aware parsing — "are we inside
+                // a variadic loop?"), keep NothingToken so (b) stays clean. The tradeoff is
+                // (a)'s `return X;` reconstruction stays broken — orphan IntOne/IntZero
+                // remains. Preferable to scrambling LogInternal output across the entire codebase.
                 { 0x00, typeof(NothingToken) },
                 { 0x01, typeof(StateVariableToken) },
                 { 0x02, typeof(IntConstToken) },
