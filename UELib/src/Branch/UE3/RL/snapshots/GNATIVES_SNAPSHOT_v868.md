@@ -68,7 +68,7 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x22 | `sub_7FF6CD2F0610`   | u16 + absolute jump (Jump)                           | `JumpToken` |
 | 0x23 | `sub_7FF6CD2F7050`   | write 8-byte 0 (NoObject)                            | `NoObjectToken` |
 | 0x24 | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
-| 0x25 | `sub_7FF6CD2F0590`   | u16 + conditional sub-expr (when u16 != 0xFFFF)      | `OptionalArgSkipTokenRL` |
+| 0x25 | `sub_7FF6CD2F0590`   | u16 + conditional sub-expr (when u16 != 0xFFFF) — switch case marker | `CaseToken` |
 | 0x26 | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x27 | `sub_7FF6CD2F7030`   | alias 0x1C (write 4-byte 0)                          | `IntZeroToken` |
 | 0x28 | `sub_7FF6CD2F5CB0`   | sub + 2 bytes + UField + type + sub (Context)        | `ContextToken` |
