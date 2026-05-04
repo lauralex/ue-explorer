@@ -125,11 +125,11 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x5B | `sub_7FF6CD308170`   | UStruct + sub + u16 + sub (struct default parameter) | `StructDefaultParameterTokenRL` |
 | 0x5C | `sub_7FF6CD2F07F0`   | sub-expr + FindLabel (GotoLabel)                     | `GotoLabelToken` |
 | 0x5D | `sub_7FF6CD30D7B0`   | `Code += 2` (no-op jump, possibly EX_JumpIfFilterEditorOnly) | `JumpToken` |
-| 0x5E | `sub_7FF6CD309510`   | 8-byte property + globals (DefaultVariable-like)     | `NothingToken` (TBD) |
+| 0x5E | `sub_7FF6CD309510`   | 8-byte UProperty + locals/out-param accessor (gated on CPF_OutParm flag) | `LocalVariableToken` (FieldToken-shape, 5 disk + 4 align) |
 | 0x5F | `sub_7FF6CD31ACB0`   | ERROR                                                | `LocalVariableToken` (legacy) |
 | 0x60 | `sub_7FF6CD2F9C90`   | 12 bytes (3 INTs) (VectorConst)                      | `VectorConstToken` |
 | 0x61 | `sub_7FF6CD3082F0`   | 5 sub-exprs (Outer, Name, Flags, Class, Template) + "No class passed to 'new' operator" log | `NewExpressionTokenRL` |
-| 0x62 | `sub_7FF6CD2F6FC0`   | (assert-shape)                                       | `AssertToken` |
+| 0x62 | `sub_7FF6CD2F6FC0`   | 8-byte FName leaf — compact delegate-function reference (renders bare name) | `DelegateFunctionRefTokenRL` |
 | 0x63 | `sub_7FF6CD2F03B0`   | (signed byte)                                        | `IntConstByteToken` |
 | 0x64 | `sub_7FF6CD2F6DE0`   | 4-byte literal (FloatConst, sister to 0x0B IntConst) | `FloatConstToken` |
 | 0x65 | `sub_7FF6CD2ED210`   | 8-byte UProperty* + Locals[offset] (LocalVariable)   | `LocalVariableToken` |
