@@ -29,6 +29,20 @@ public class InstanceDelegateTokenRL : UStruct.UByteCodeDecompiler.Token
     public override string Decompile()
     {
         string name = DelegateName.ToString();
+
+        // The cooker emits FName index 0 to mean "delegate unbind"
+        // (`delegateProperty = none;`). RL packages don't reserve index 0 for
+        // NAME_None — names get alphabetical-sorted, so the actual entry at
+        // index 0 is whatever sorts first under ASCII (Engine: `"*"`,
+        // TAGame: `"*Distortion"`). Detect the resolved name starts with `*`
+        // and render as `none` instead of `Object.*Garbage`. Visible across
+        // many delegate-clear sites: `Pawn.PostBeginPlay`, `PRI_TA.PostBeginPlay`,
+        // `Car_TA.PostBeginPlay`, `AntiCheatManager_TA.__Construct_0x1`, etc.
+        if (name.StartsWith('*'))
+        {
+            return "none";
+        }
+
         if (DelegateObject == null || DelegateObject.Name == "None")
         {
             return name;
