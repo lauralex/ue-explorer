@@ -119,8 +119,21 @@ namespace UELib.Branch.UE3.RL
                 // for static and dynamic arrays at this level.
                 { 0x16, typeof(DynamicArrayElementToken) },
                 { 0x17, typeof(DelegatePropertyToken) },
-                { 0x18, typeof(ConditionalToken) },
-                { 0x19, typeof(InterfaceCastToken) },
+                // 0x18: VERIFIED unmapped (binary handler = default error). Was wrongly
+                // ConditionalToken (3 sub-exprs + 2 u16s — heavily over-consumed when this
+                // byte appeared in real bytecode, cascading into garbled if/while bodies).
+                { 0x18, typeof(NothingToken) },
+                // 0x19: VERIFIED dynarray-method sub-dispatcher (NOT InterfaceCast).
+                // GNatives[0x19] = sub_7FF6CD2F1750 reads 1 byte, dispatches into a
+                // sub-table at funcs_7FF6CD2F176D (= 0x7FF6CF2B2D80). Sub-table entries
+                // include DynArrayElement (sub_7FF6CD2ED7E0, "Accessed array out of bounds")
+                // and DynArrayLength (sub_7FF6CD2EDE20). This is THE chained-native prefix
+                // for dynamic-array methods in RL — same role as the existing
+                // ExtendedNativeFunctionToken (which uses the s_extendedNativeFunctionTokenMap
+                // for dispatch). Was wrongly InterfaceCastToken — every occurrence rendered
+                // as `/* unresolved cast */()` and NRE'd, polluting many functions including
+                // Ball_TA.EnableOwnerTranslucency, Actor.FindEventsOfClass, GameInfo.FindPlayerStart.
+                { 0x19, typeof(Tokens.ExtendedNativeFunctionToken) },
                 { 0x1A, typeof(InstanceVariableToken) },
                 { 0x1B, typeof(MetaClassCastToken) },
                 // 0x1C: VERIFIED IntZero/False (writes 4-byte 0).
