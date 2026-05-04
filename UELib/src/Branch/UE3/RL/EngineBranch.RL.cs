@@ -147,11 +147,19 @@ namespace UELib.Branch.UE3.RL
                 // to LetBool (which reads two sub-expressions).
                 { 0x1F, typeof(SelfToken) },
                 { 0x20, typeof(ReturnToken) },
-                // 0x21: tied across many candidates at +43 clean. DynamicArrayIterator
-                // shape (one extra trailing sub) edged out simpler shapes by 1 — pick it
-                // because the structure aligns with iterator-style usage seen in surrounding
-                // bytecode (Actor.PlayParticleEffect / Pawn.PostBeginPlay).
-                { 0x21, typeof(DynamicArrayIteratorToken) },
+                // 0x21: VERIFIED 1-sub-expr property-to-string cast (NOT DynArrayIterator).
+                // GNatives[0x21] = sub_7FF6CD2F5A40 reads ONE sub-expression then calls a
+                // property-export helper (sub_7FF6CD3192F0) with the property class pointer
+                // (qword_7FF6CF27D780 + 200 = UProperty::PropertyClass) and value pointer
+                // (qword_7FF6CF27D7B0). Result is FString-shape; matches `string(propRef)`.
+                // The real foreach is dispatched via the extended-native prefix:
+                //   0x10 0x0A → DynamicArrayIteratorRL (foreach arr(item))
+                //   0x71 0x39 → IteratorTokenRL (foreach AllControllers etc.)
+                // The previous "DynamicArrayIteratorToken" mapping here was tautological —
+                // the rendered `foreach` came from the (wrong) token map, not from the
+                // binary handler. Result: Actor.FindEventsOfClass rendered
+                // `foreach @NULL(...) {}` with empty body and orphan `.Length;` after.
+                { 0x21, typeof(StringCastTokenRL) },
                 // 0x22: VERIFIED Jump (unconditional, reads u16 offset, runtime jumps).
                 // GNatives[0x22] = sub_7FF6CD2F0610 reads 2 bytes (v3 — code offset), then sets
                 // `Code = ScriptStart + v3` (absolute jump). Wire format = 2 bytes only,

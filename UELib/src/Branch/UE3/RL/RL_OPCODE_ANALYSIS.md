@@ -12,7 +12,7 @@
 > |---------|---------------------------|-------|
 > | 0x00    | EX_Return / padding       | Context-aware via `ContextAwareReturnTokenRL`: at top-level statement (DeserializationDepth=1, no recovery, next byte != 0x00, not inside variadic call) acts as `EX_Return`. Otherwise NothingToken / padding. |
 > | 0x09    | comma operator (`A, B`)    | New `DiscardKeepTokenRL` — sub-A side-effects, sub-B value discarded. Cooker emits this around for-loop init expressions. |
-> | 0x21    | EX_DynArrayIterator (foreach) | Was already mapped; verified via `Actor.FindEventsOfClass` disassembly. |
+> | 0x21    | property→string cast (RL-specific) | New `StringCastTokenRL` — **not** DynArrayIterator. Binary handler reads 1 sub-expression then calls a property-export helper using `UProperty::PropertyClass + value pointer`. The previous `DynamicArrayIteratorToken` mapping was tautological (rendered `foreach` came from the wrong token map). The real foreach is dispatched via the extended-native prefix: `0x10 0x0A` for dynamic-array foreach, `0x71 0x39` for `foreach AllControllers`-style. |
 > | 0x27    | IntZero / False           | Remapped from FalseToken to IntZeroToken — cooker uses 0x27 for both `Index = 0` and `bX = false` contexts; rendering as `0` is valid for both, `false` was invalid for ints. |
 > | 0x32    | EX_InstanceDelegate (RL fork) | New `InstanceDelegateTokenRL` — 16 bytes (UObject* + FName); RL bakes in the object reference. |
 > | 0x36    | property setter w/ discard | New `PropertySetterDiscardTokenRL` — UProperty* + sub-expr; result slot zeroed. |
@@ -53,7 +53,7 @@
 > | `Ball_TA` (whole-class decompile)           | All structs, properties, replication blocks, delegates, defaultproperties block render structurally correct |
 > | `PRI_TA.SetLoadouts`                        | for-loops as `Index = 0; if(Index < 2) { body; ++Index; } goto J0xN;` — body and structure correct, just not folded into `for` syntax |
 > | `Car_TA.UpdateTeamLoadout`                  | Clean assignments, member access, `return 0;` `return 1;` properly reconstructed |
-> | `Actor.FindEventsOfClass` (Engine.upk)     | foreach token recognized but body bound incorrectly (Task #47) |
+> | `Actor.FindEventsOfClass` (Engine.upk)     | 0x21 remapped (was wrongly DynArrayIterator → now StringCastTokenRL); residual `/* unresolved cast */()` is from 0x19 sub-dispatcher (task #5). Real foreach lives at extended-native `0x10 0x0A` and `0x71 0x39`. |
 >
 > Original 2026-05-03 milestones below remain valid; this session refined them.
 
