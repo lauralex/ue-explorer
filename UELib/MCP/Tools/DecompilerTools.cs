@@ -10,9 +10,13 @@ namespace UELib.MCP.Tools;
 [McpServerToolType]
 public sealed class DecompilerTools(PackageSessionManager sessions)
 {
-    [McpServerTool(Name = "decompile_object")]
+    [McpServerTool(Name = "decompile_object",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Decompile any IUnrealDecompilable object (class, function, struct, enum, const, state, property) " +
-                 "looked up by group path. Returns the textual UnrealScript.")]
+                 "looked up by group path. Returns the textual UnrealScript. " +
+                 "Prefer the more specific siblings when you know the kind: `decompile_class` for whole classes by name, " +
+                 "`decompile_function` for a single method on a class. Use this generic tool for non-class/non-function " +
+                 "decompilable kinds (struct, enum, const, state, property).")]
     public Task<DecompileResultDto> DecompileObject(
         [Description("Handle returned by load_package.")] string handle,
         [Description("Dotted group path, e.g. 'TAGame.Car_TA.OnPossessed'.")] string group_path,
@@ -36,9 +40,12 @@ public sealed class DecompilerTools(PackageSessionManager sessions)
         }, ct);
     }
 
-    [McpServerTool(Name = "decompile_class")]
+    [McpServerTool(Name = "decompile_class",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Decompile a UClass to full UnrealScript source (declaration, properties, functions, states, " +
-                 "default-properties block). May emit a warning if some tokens are not yet implemented for this game branch.")]
+                 "default-properties block). Output can be very large for RL classes like Actor — for a single function " +
+                 "use `decompile_function`; for a structured (non-source) snapshot use `get_class_info`. " +
+                 "May emit a warning if some tokens are not yet implemented for this game branch.")]
     public Task<DecompileResultDto> DecompileClass(
         [Description("Handle returned by load_package.")] string handle,
         [Description("Class name or dotted path.")] string class_name,
@@ -53,11 +60,15 @@ public sealed class DecompilerTools(PackageSessionManager sessions)
         }, ct);
     }
 
-    [McpServerTool(Name = "decompile_function")]
+    [McpServerTool(Name = "decompile_function",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Decompile a single UFunction to UnrealScript. Includes signature line, flags keywords, " +
-                 "and the function body produced by walking the bytecode. Wraps the call in try/catch — " +
-                 "if a token throws (common while RL token coverage is being expanded) the warning field carries " +
-                 "the exception message and source contains whatever produced before the throw (may be empty).")]
+                 "and the function body produced by walking the bytecode. " +
+                 "For the entire class source use `decompile_class`. For raw bytecode tokens (offsets, opcode bytes, " +
+                 "per-token text) use `disassemble_function`. " +
+                 "Wraps the call in try/catch — if a token throws (common while RL token coverage is being expanded) " +
+                 "the warning field carries the exception message and source contains whatever produced before the " +
+                 "throw (may be empty).")]
     public Task<DecompileResultDto> DecompileFunction(
         [Description("Handle returned by load_package.")] string handle,
         [Description("Class name or dotted path.")] string class_path,
@@ -74,10 +85,12 @@ public sealed class DecompilerTools(PackageSessionManager sessions)
         }, ct);
     }
 
-    [McpServerTool(Name = "disassemble_function")]
+    [McpServerTool(Name = "disassemble_function",
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Tokenize a function's bytecode without producing UnrealScript. Returns each token's stream offset, " +
                  "size in bytes, leading opcode byte, .NET type name, and the per-token decompiled text. " +
-                 "Indispensable for diagnosing token-coverage gaps in the Rocket League bytecode.")]
+                 "Indispensable for diagnosing token-coverage gaps in the Rocket League bytecode. " +
+                 "For the assembled UnrealScript source use `decompile_function`.")]
     public Task<DisassembleResultDto> DisassembleFunction(
         [Description("Handle returned by load_package.")] string handle,
         [Description("Class name or dotted path.")] string class_path,

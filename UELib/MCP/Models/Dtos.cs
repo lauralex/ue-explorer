@@ -81,7 +81,10 @@ public sealed record ClassInfoDto(
     IReadOnlyList<StateSummaryDto> states,
     IReadOnlyList<StructSummaryDto> structs,
     IReadOnlyList<ConstInfoDto> consts,
-    IReadOnlyList<EnumInfoDto> enums);
+    IReadOnlyList<EnumInfoDto> enums,
+    // Each entry is "section_name:total_count" for sections that were
+    // truncated by `member_limit`. Empty when nothing got cut.
+    IReadOnlyList<string> truncations);
 
 public sealed record FuncInfoDto(
     string name,
