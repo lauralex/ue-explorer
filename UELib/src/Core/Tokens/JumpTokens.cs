@@ -268,6 +268,19 @@ namespace UELib.Core
 
                     if (CodeOffset < Position)
                     {
+                        // Backward jump = loop back-edge. If we're inside a Loop nest whose
+                        // creator is a JumpIfNotToken (the standard `while(...)` shape), and
+                        // we're jumping to at-or-before the loop's start, suppress the goto —
+                        // it's implicit in `while(...) { ... }` syntax. Cooked UE3 emits the
+                        // back-edge target at the test-expression's first load (a few bytes
+                        // before the JumpIfNot), so accept any CodeOffset <= JumpIfNot.Position.
+                        if (Decompiler.IsWithinNest(NestManager.Nest.NestType.Loop)?.Creator is JumpIfNotToken
+                            loopJumpIfNot && CodeOffset <= loopJumpIfNot.Position)
+                        {
+                            NoJumpLabel();
+                            return "";
+                        }
+
                         SetStatementComment("Loop Continue");
                     }
 
@@ -375,16 +388,29 @@ namespace UELib.Core
                 {
                     string condition = DecompileNext();
 
-                    // Check if we are jumping to the start of a JumpIfNot token.
-                    // if true, we can assume that this (If) statement is contained within a loop.
+                    // Detect `while(cond) { body }` back-edge: a JumpToken in or just past
+                    // this if's body that jumps backward to at-or-before this JumpIfNot's
+                    // position. Cooked UE3 places the back-edge IMMEDIATELY after the if's
+                    // CodeOffset (one token past the closing brace), and aims at the
+                    // test-expression's first load (typically a few bytes before the
+                    // JumpIfNot opcode), so we accept any CodeOffset <= our Position.
                     IsLoop = false;
                     for (int i = Decompiler.CurrentTokenIndex + 1; i < Decompiler.DeserializedTokens.Count; ++i)
                     {
-                        if (Decompiler.DeserializedTokens[i] is JumpToken jt && jt.CodeOffset == Position)
+                        var bodyToken = Decompiler.DeserializedTokens[i];
+                        // GetType() == typeof(JumpToken): only the unconditional Jump, not its
+                        // subclasses (JumpIfNot, Case, Iterator) — those have their own semantics.
+                        if (bodyToken.GetType() == typeof(JumpToken)
+                            && bodyToken is JumpToken jt
+                            && jt.CodeOffset <= Position
+                            && jt.CodeOffset < jt.Position
+                            && jt.Position <= CodeOffset + 10)
                         {
                             IsLoop = true;
                             break;
                         }
+                        // Don't scan too far past this if — avoid false positives from later loops.
+                        if (bodyToken.Position > CodeOffset + 10) break;
                     }
 
                     SetEndComment();
@@ -404,7 +430,7 @@ namespace UELib.Core
                         return output;
                     }
 
-                    output = /*(IsLoop ? "while" : "if") +*/ $"if({condition})";
+                    output = $"{(IsLoop ? "while" : "if")}({condition})";
                     Decompiler._CanAddSemicolon = false;
 
                     if (IsLoop == false)
@@ -470,10 +496,33 @@ namespace UELib.Core
                     // Initialize Nester if null
                     Decompiler._Nester ??= new NestManager { Decompiler = Decompiler };
 
+                    int nestEndPosition = CodeOffset;
+                    if (IsLoop)
+                    {
+                        // Extend the Loop nest's end past the back-edge JumpToken so the
+                        // closing `}` lands AFTER the back-edge, and the JumpToken's
+                        // Decompile sees we're still inside a Loop nest (which lets it
+                        // suppress the implicit-goto-back rendering).
+                        for (int i = Decompiler.CurrentTokenIndex + 1; i < Decompiler.DeserializedTokens.Count; ++i)
+                        {
+                            var t = Decompiler.DeserializedTokens[i];
+                            if (t.Position < CodeOffset) continue;
+                            if (t.GetType() == typeof(JumpToken)
+                                && t is JumpToken jt
+                                && jt.CodeOffset <= Position
+                                && jt.CodeOffset < jt.Position)
+                            {
+                                nestEndPosition = jt.Position + jt.Size;
+                                break;
+                            }
+                            if (t.Position > CodeOffset + 10) break;
+                        }
+                    }
+
                     Decompiler._Nester.AddNest(IsLoop
                             ? NestManager.Nest.NestType.Loop
                             : NestManager.Nest.NestType.If,
-                        Position, CodeOffset, this
+                        Position, nestEndPosition, this
                     );
                     return output;
                 }
