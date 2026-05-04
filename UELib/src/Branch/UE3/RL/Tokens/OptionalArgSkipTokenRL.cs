@@ -37,6 +37,14 @@ public class OptionalArgSkipTokenRL : UStruct.UByteCodeDecompiler.Token
             return string.Empty;
         }
 
-        return DecompileNext();
+        // The cooker emits 0x31 with a sub-expression in the function prologue
+        // to seed default values for optional parameters. These run at runtime
+        // when the caller didn't provide the arg, but in the decompiled source
+        // they're implicit (part of the `optional` parameter's signature). The
+        // sub-expression is consumed (so the bytes are accounted for) but
+        // discarded — rendering it as a top-level statement leaks orphan
+        // property/object names like `Location` or `none`.
+        DecompileNext();
+        return string.Empty;
     }
 }
