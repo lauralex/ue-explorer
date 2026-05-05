@@ -367,6 +367,15 @@ namespace UELib.Core
                     Decompiler._CanAddSemicolon = false;
                 }
 
+                private static bool IsExitLikeToken(Token t)
+                {
+                    if (t == null) return false;
+                    var name = t.GetType().Name;
+                    return name == "ContextAwareReturnTokenRL"
+                        || name == "ReturnToken"
+                        || name == "ReturnNothingToken";
+                }
+
                 public override void PostDeserialized()
                 {
                     base.PostDeserialized();
@@ -503,33 +512,86 @@ namespace UELib.Core
 
                     int nestEndPosition = CodeOffset;
 
-                    // RL cooker bug: stored CodeOffset can place the brace
-                    // INSIDE the JumpIfNot's own bytes (CodeOffset < Position +
-                    // Size — impossible for a valid forward jump). This shows
-                    // up in HandleClientActionRequired-style functions whose
-                    // condition contains a LocalVariable or other 4→8 expansion
-                    // and whose body is a single short statement (e.g.
-                    // `if(cond) { return; }`). The cooker undercounted the
-                    // in-memory size of the condition by exactly one expansion
-                    // per object reference, so the recorded CodeOffset lands
-                    // before the body even starts. Recover by walking forward
-                    // from the JumpIfNot's end to the first sibling token and
-                    // ending the if-body just past it (single-statement body
-                    // assumption — fits the empirical shape of the bug).
-                    if (!IsLoop
-                        && CodeOffset > Position
-                        && CodeOffset < Position + Size)
+                    // RL cooker bug: stored CodeOffset can be undercounted by some
+                    // number of bytes due to 4→8 in-memory expansions in the
+                    // condition or body. Two distinct shapes show up:
+                    //
+                    //   Case A — CodeOffset lands INSIDE JumpIfNot's own bytes
+                    //   (CodeOffset > Position && CodeOffset < Position+Size).
+                    //   Body is a single short statement immediately following.
+                    //   Recover by ending just past the first sibling.
+                    //
+                    //   Case B — CodeOffset lands PAST JumpIfNot but doesn't
+                    //   align with any sibling boundary; it falls mid-body-token
+                    //   instead (typical when the body is a long native call
+                    //   followed by a short `return X;` and the cooker undercount
+                    //   places CodeOffset just inside the long call). Recover by
+                    //   snapping to the next sibling boundary, then including
+                    //   that sibling iff it's a return-like exit (the empirical
+                    //   pattern of this RL cooker bug — see RegisterClient).
+                    //
+                    // The two cases need different semantics; merging them would
+                    // either give case A an empty body or case B's exit-token
+                    // would over-include. Keep them as parallel branches.
+                    if (!IsLoop)
                     {
                         int afterJump = Position + Size;
-                        for (int j = Decompiler.DeserializedTokens.IndexOf(this) + 1;
-                             j < Decompiler.DeserializedTokens.Count;
-                             j++)
+                        int thisIdx = Decompiler.DeserializedTokens.IndexOf(this);
+                        if (thisIdx >= 0)
                         {
-                            var t = Decompiler.DeserializedTokens[j];
-                            if (t.Position >= afterJump)
+                            // Case A
+                            if (CodeOffset > Position && CodeOffset < afterJump)
                             {
-                                nestEndPosition = t.Position + t.Size;
-                                break;
+                                for (int j = thisIdx + 1; j < Decompiler.DeserializedTokens.Count; j++)
+                                {
+                                    var t = Decompiler.DeserializedTokens[j];
+                                    if (t == null) continue;
+                                    if (t.Position >= afterJump)
+                                    {
+                                        nestEndPosition = t.Position + t.Size;
+                                        break;
+                                    }
+                                }
+                            }
+                            // Case B
+                            else if (CodeOffset >= afterJump)
+                            {
+                                int currentEnd = afterJump;
+                                Token prevSibling = null;
+                                for (int j = thisIdx + 1; j < Decompiler.DeserializedTokens.Count; j++)
+                                {
+                                    var t = Decompiler.DeserializedTokens[j];
+                                    if (t == null) continue;
+                                    // Skip tokens nested inside an earlier sibling.
+                                    if (t.Position < currentEnd) continue;
+
+                                    if (t.Position == CodeOffset)
+                                    {
+                                        // Aligned at a sibling boundary — original
+                                        // CodeOffset is correct, no recovery needed.
+                                        break;
+                                    }
+                                    if (t.Position > CodeOffset)
+                                    {
+                                        // CodeOffset overshot a sibling and landed
+                                        // mid-next-sibling. Snap to start of `t`.
+                                        nestEndPosition = t.Position;
+                                        // Include `t` iff it's a return-like exit AND
+                                        // the previous sibling (the one CodeOffset
+                                        // landed inside) is NOT itself an exit. The
+                                        // empirical pattern is "long non-exit body
+                                        // statement + trailing short return"; if the
+                                        // body is itself a return-with-expression,
+                                        // the next sibling exit is OUTSIDE the if.
+                                        if (IsExitLikeToken(t) && prevSibling != null && !IsExitLikeToken(prevSibling))
+                                        {
+                                            nestEndPosition = t.Position + t.Size;
+                                        }
+                                        break;
+                                    }
+                                    prevSibling = t;
+                                    currentEnd = t.Position + t.Size;
+                                }
                             }
                         }
                     }
