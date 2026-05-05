@@ -103,13 +103,26 @@
 >   - 0x18 / 0x6F: both verified default-error → `NothingToken`.
 >
 >   What this rules OUT: ternary as a single primary opcode with the
->   stock-UE3 wire format. What it does NOT rule out: ternary lowered to
->   a different shape (LetBool + secondary-dispatch sub + delayed-eval),
->   ternary emitted via an extended-native sub-table entry, or ternary
->   compiled to a sequence of independent statements that need
->   pattern-recognition at the decompile pass rather than parse pass.
->   Both the runtime binary AND the cooked .upk bytecode are available;
->   resolution path is byte-by-byte trace of a known ternary site.
+>   stock-UE3 wire format.
+>
+>   2026-05-05 update: also walked all unverified entries in the 0x19
+>   dynarray-method sub-table (+0x02, +0x09, +0x0E/0x0F, +0x20, +0x23,
+>   +0x27, +0x2A, +0x2B, +0x2D, +0x2E, +0x2F). All identified as specific
+>   array-method handlers with shapes like "1 sub + u16-skip-on-null +
+>   1+ subs + UProperty + trailer + body-sub". None match EX_Conditional's
+>   "1 sub + u16 + 1 sub + u16 + 1 sub" structure. Renamed all verified
+>   entries with execDynArray* names in the IDB.
+>
+>   Net: **EX_Conditional does not exist as a single byte/sub-byte handler
+>   in v868 RL.** The cooker either lowers ternary to a sequence of
+>   independent statements (recognizable by pattern-match in the decompile
+>   pass), or uses some non-obvious encoding still to be found. Going
+>   forward without more evidence requires either:
+>   - heuristic pattern-match in the decompile pass (recognize Let with
+>     bool/comparison RHS + orphan return-like + orphan default-leaf,
+>     rewrite as ternary)
+>   - byte-by-byte trace of a known ternary site against a debugger or
+>     against the on-disk parser code (currently unidentified).
 >
 > - **`if(X) {} return Y;` empty-body pattern in some functions** with
 >   complex-cond + early-return. Visible in `Car_TA.UpdateTeamLoadout`'s
