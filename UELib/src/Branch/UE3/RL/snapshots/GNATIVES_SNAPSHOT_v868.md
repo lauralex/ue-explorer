@@ -43,7 +43,7 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x09 | `sub_7FF6CD2F5930`   | optional 0x20 prefix + 2 sub-exprs (comma operator)  | `DiscardKeepTokenRL` |
 | 0x0A | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x0B | `sub_7FF6CD2F6DC0`   | 4-byte INT (IntConst)                                | `IntConstToken` |
-| 0x0C | `sub_7FF6CD2F0AA0`   | 2 sub-exprs + bit-clear (LetBool-shape)              | `EventSubscribeToken` (TBD — current best fit) |
+| 0x0C | `sub_7FF6CD2F0AA0`   | 2 sub-exprs + bit-clear (LetBool-shape)              | `LetBoolToken` |
 | 0x0D | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x0E | `sub_7FF6CD2F63E0`   | UStruct + 2 sub-exprs + struct-cmp (EQ)              | `StructCmpEqToken` |
 | 0x0F | `sub_7FF6CD2F5F00`   | 8-byte UFunction* + dispatch (FinalFunction)         | `FinalFunctionTokenRL` |
@@ -81,7 +81,7 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x2F | `sub_7FF6CD2F7040`   | write 1 (4-byte) (alias 0x3A; IntOne/True)           | `IntOneToken` |
 | 0x30 | `sub_7FF6CD2F9C50`   | 12 bytes (3 INTs) (VectorConst)                      | `VectorConstToken` |
 | 0x31 | `sub_7FF6CD2ED4A0`   | u16 + variadic body until 0x4F (debug block)         | `OptionalArgSkipTokenRL` (works in practice via 1-sub spillover) |
-| 0x32 | `sub_7FF6CD2F6180`   | 8-byte UObject* + 8-byte FName (InstanceDelegate)    | `InstanceDelegateTokenRL` |
+| 0x32 | `sub_7FF6CD2F6180`   | runtime: 8-byte UObject* + 8-byte FName. Parser case (LABEL_79): 8-byte FName FIRST, then 4-byte UProperty (4 disk → 8 mem). Parser is authoritative for decompile. | `InstanceDelegateTokenRL` (read order: FName then UProperty; defensive UProperty lookup) |
 | 0x33 | `sub_7FF6CD2F1770`   | 2 sub-exprs + dynarray-result handling               | `EatReturnValueToken` (1-sub passthrough — best effort) |
 | 0x34 | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x35 | `sub_7FF6CD31ACB0` (TBD verify) | ERROR? (was NameConst by guess)            | `NameConstToken` (legacy) |
@@ -117,7 +117,7 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x53 | `sub_7FF6CD2F6240`   | UStruct + 2 sub + struct-cmp (StructCmpEq)           | `StructCmpEqToken` |
 | 0x54 | `sub_7FF6CD2F6AE0`   | alias of 0x1B; same parser case as 0x05/0x16 (variadic body until 0x3E) | `DynamicArrayElementToken` (mirrors 0x1B/0x16) |
 | 0x55 | `sub_7FF6CD2ED270`   | 8-byte UProperty* + this-relative addr (InstanceVariable) | `InstanceVariableToken` |
-| 0x56 | `sub_7FF6CD2F5B00`   | 8-byte FName + state-fn-call log                     | `NameConstToken` |
+| 0x56 | `sub_7FF6CD2F5B00`   | 8-byte FName — EX_StateFunction tombstone. Cooker emits as the body of state-overridable function declarations in base classes. | `StateFunctionTokenRL` (reads 8-byte FName, renders empty so `function Foo();` declarations show with no body) |
 | 0x57 | `sub_7FF6CD2F0390`   | 9 bytes (UField + type) + sub + case loop (Switch)   | `SwitchToken` |
 | 0x58 | `sub_7FF6CD2ED2D0`   | 8-byte UProperty* + object-flag check (DefaultVar)   | `DefaultVariableToken` |
 | 0x59 | `sub_7FF6CD2F5F20`   | FName + state-skip lookup (GlobalFunction)           | `GlobalFunctionToken` |
@@ -154,7 +154,7 @@ unmapped in RL and should never appear in valid bytecode.
   VariadicArrayConcat, +0x0C VariadicArrayAddUniqueItems, +0x0D
   DynArrayAddUniqueItem, +0x21 DynArrayFilterOut, +0x22 DynArrayMap, +0x24
   FindFirstWithDelegate, +0x25 DynArrayEvery, +0x26 DynArrayAny, +0x28
-  VariadicArrayFillOut, +0x29 DynArrayFilter, +0x2C DynArrayEqual, +0x30
+  VariadicArrayFillOut, +0x29 DynArrayFilter, +0x2B DynArrayFirst, +0x2C DynArrayEqual, +0x30
   DynArrayFindType, +0x31 DynArrayConcat.
 
   Unmapped sub-bytes whose handlers are NOT the error stub (i.e., real
@@ -169,8 +169,8 @@ unmapped in RL and should never appear in valid bytecode.
   - +0x23 sub_7FF6CD2F26D0 — DynArrayReduce (4 sub + reduce-fn lookup,
     error strings `"DynArrayReduce: Failed to find 2nd parameter property"`,
     `"DynArrayReduce: Failed to find reduce function"`)
-  - +0x27 sub_7FF6CD2F3200, +0x2A sub_7FF6CD2F47F0, +0x2B sub_7FF6CD2F4970,
-    +0x2D sub_7FF6CD2F45D0, +0x2E sub_7FF6CD2F51E0, +0x2F sub_7FF6CD2F2200,
+  - +0x27 sub_7FF6CD2F3200, +0x2A sub_7FF6CD2F47F0, +0x2D sub_7FF6CD2F45D0,
+    +0x2E sub_7FF6CD2F51E0, +0x2F sub_7FF6CD2F2200,
     +0x32 sub_7FF6CD2F3600, +0x33 sub_7FF6CD2F38A0, +0x34 sub_7FF6CD2F55A0,
     +0x35 sub_7FF6CD2EDB50 — additional unmapped real handlers, shapes TBD.
 
@@ -193,6 +193,10 @@ These are second-level dispatchers that route to GNatives entries 256..4095:
 - 0x70, 0x72..0x7F — generic chained dispatch (`ChainedNativeDispatcherTokenRL`)
 
 Each reads a sub-byte and indexes `GNatives[(byte − 0x70) × 256 + sub_byte]`.
+When the computed native index is above `0xFF`, resolve it through the native
+table/name map directly. Do not feed `(byte)nativeIndex` back into the primary
+opcode `TokenMap`: e.g. `0x71 0x02` is native 258 (`ClassIsChildOf`), not
+primary opcode `0x02`.
 
 ### Inline natives (0x80..0xFF)
 
