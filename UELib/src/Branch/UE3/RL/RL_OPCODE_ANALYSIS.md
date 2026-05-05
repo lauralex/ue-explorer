@@ -86,11 +86,31 @@
 >
 > ### Remaining issues
 >
-> - **Ternary `? :` reconstruction.** Visible as multiple consecutive
->   `return X;` statements in `Ball_TA.IsGroundHit`, `Ball_TA.Explode`'s
->   `ExplosionRotation` assignment, and a few other places. UE3 cooks
->   ternary as `JumpIfNot + Let + Jump + Let` (or similar); NestManager
->   doesn't currently fold this back into `cond ? then : else`.
+> - **Ternary `? :` reconstruction. STUCK — needs cooker source or
+>   debugger trace, not runtime-handler RE.** Visible as multiple
+>   consecutive `return X;` statements + orphan `default.X` lines in
+>   `Ball_TA.IsGroundHit`, `Ball_TA.Explode`'s `ExplosionRotation`
+>   assignment, `Car_TA.GetPreviewTeamIndex`, and others.
+>
+>   2026-05-05 dead-end finding: **No byte 0x00..0x6F in v868 has the
+>   EX_Conditional wire format ("1 sub + u16 + 1 sub + u16 + 1 sub").**
+>   Walked every primary handler in `GNATIVES_SNAPSHOT_v868.md`. Closest
+>   candidates verified NOT to be Conditional:
+>   - 0x2C (StatementWrapperTokenRL): handler `sub_7FF6CD308010` reads
+>     `1 sub + 1 byte + optional 0x20`. Verified by IDA decompile. The
+>     `LetToken` at the typical ternary use site (e.g. IsGroundHit pos 52)
+>     wraps a 0x2C as its RHS, then the true/false expressions render as
+>     orphan top-level statements. Remapping 0x2C to ConditionalToken would
+>     over-consume bytes (the cooker only emits 1+1 there).
+>   - 0x18 (was tried as Conditional, verified as default-error → NothingToken).
+>   - 0x6F (was tried as Conditional, verified as default-error → NothingToken).
+>
+>   The cooker is emitting some byte sequence that the parser interprets
+>   as a Let with a "wrapped cond"-shaped RHS, then unrelated top-level
+>   tokens for the true/false branches. Without cooker source or a stepping
+>   debugger session against a known ternary-bearing function, the actual
+>   wire format for ternary in v868 cannot be derived. Stop trying to
+>   re-derive this from runtime handler analysis — the answer is not there.
 >
 > - **`if(X) {} return Y;` empty-body pattern in some functions** with
 >   complex-cond + early-return. Visible in `Car_TA.UpdateTeamLoadout`'s
