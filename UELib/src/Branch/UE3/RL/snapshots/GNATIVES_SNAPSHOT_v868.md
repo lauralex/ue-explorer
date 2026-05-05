@@ -201,6 +201,34 @@ Direct native function pointers. Specific bytes verified:
 - 0x84 — OrToken (logical ||)
 - Most others render as `NativeFunctionToken` via the standard-operator-symbol map.
 
+## IDA database annotations (v868)
+
+The RocketLeague_Dumped_latest.exe IDB has been annotated with:
+
+- **`GNatives` symbol** at `0x7FF6CF2AA580` (renamed from `funcs_7FF6CD28592F`).
+- **Per-byte comments** on every entry from `GNatives[0x00]` through `GNatives[0x7F]`,
+  including the handler address, wire-format shape, current token mapping, and
+  any "was wrongly X" history for entries that have been corrected.
+- **`exec*` function names** for the major handlers:
+  `execLet`, `execLetBool`, `execLetDelegate`, `execContext`, `execJump`,
+  `execJumpIfNot`, `execCase`, `execSwitch`, `execEndFunctionParms`, `execNew`,
+  `execAssertExpression`, `execGotoLabel`, `execDelegateAccess`, `execFinalFunction`,
+  `execVirtualFunction`, `execGlobalFunction`, `execDynamicCast`, `execSelf`,
+  `execStateVariable`, `execEventSubscribeShape`, `execHandleOptionalDebugInfo`,
+  `execStatementWrapper` (0x2C), `execNoneCoalesce` (0x5B = `??`),
+  `execArrayElement`, `execLocalVariable`, `execInstanceVariable`,
+  `execEmptyParm`, `execEndOfScript`, `execReturnNothing`, `execIteratorPop`,
+  `execScriptError_UnknownToken` (the default-error stub),
+  `execDynArrayMethodDispatcher` (0x19's sub-table entry),
+  `execPrimitiveCastDispatcher` (0x6B's cast jump-table).
+
+Anchor strings still useful for cross-version dumps:
+- `"Unknown code token %02X"` → xref → `execScriptError_UnknownToken` (default-error stub address; appears in many slots)
+- `"Attempt to assign variable through None"` → `execLet`
+- `"Accessed array '%s.%s' out of bounds (%i/%i)"` → `execArrayElement`
+- `"Attempt to insert an element at %i an %i-element array '%s'"` → DynArrayInsert (sub +0x09 of 0x19's sub-table)
+- `"DynArrayReduce: Failed to find 2nd parameter property"` → DynArrayReduce (sub +0x23)
+
 ## Cross-version comparison procedure
 
 When a new RL build is dumped:
