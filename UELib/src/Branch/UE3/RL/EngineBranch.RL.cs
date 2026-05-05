@@ -562,13 +562,19 @@ namespace UELib.Branch.UE3.RL
                 // separator — semantically wrong, and the over-consumption (8 missed bytes per
                 // occurrence) was scrambling downstream tokens.
                 { 0x55, typeof(InstanceVariableToken) },
-                // 0x56: VERIFIED 8-byte FName + state-fn-call (NOT DebugInfo).
+                // 0x56: VERIFIED EX_StateFunction tombstone.
                 // GNatives[0x56] = sub_7FF6CD2F5B00 reads 8-byte FName, calls a state-aware
                 // logger that prints "State function '%s' called while not in declared state."
-                // Shape is identical to NameConst (8-byte qword leaf) — the state check is
-                // runtime-only behavior, doesn't affect parsing. Was wrongly DebugInfoToken
-                // (13-byte payload — over-consumed 5 bytes per occurrence).
-                { 0x56, typeof(NameConstToken) },
+                // Cooker emits this as the body of base-class state-overridable function
+                // declarations (e.g. SendReservation, JoinServer in OnlineGameJoinGame_X).
+                // Mapping to NameConstToken produced orphan name literals like
+                // 'SendReservation' inside the function body. StateFunctionTokenRL reads
+                // the same 8-byte FName but renders empty — preserves the parse and
+                // restores the canonical UE3 base-class declaration form
+                // (`function SendReservation();` with no body). State-attached overrides
+                // (`state ReservingServer { function SendReservation() { ... } }`)
+                // have real bodies and are unaffected.
+                { 0x56, typeof(StateFunctionTokenRL) },
                 // 0x57: VERIFIED Switch (UProperty* + property type + sub-expr + case loop).
                 // GNatives[0x57] = sub_7FF6CD2F0390 reads 9 bytes via sub_7FF6CD317F00 (UField* +
                 // property type byte), dispatches sub-opcode (the switch-value expression), then
