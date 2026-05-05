@@ -274,7 +274,12 @@ namespace UELib.Branch.UE3.RL
                 // version >= 588 path with the embedded property pointer). Has unique runtime
                 // error string "Accessed None '%s'". Real LocalVariable is at 0x65 (Locals-frame
                 // accessor); was wrongly mapped to LocalVariable here as a high-frequency tie.
-                { 0x28, typeof(ContextToken) },
+                //
+                // Mapped to ContextTokenRL (RL-defensive subclass) — wraps the UField lookup
+                // in try/catch so stale import indices don't orphan the trailing u16 + member
+                // sub. Visible without the defensive variant in
+                // AIController_Soccar_TA.HandleNewPickup as "NewPickup." with truncated member.
+                { 0x28, typeof(ContextTokenRL) },
                 // 0x29: VERIFIED JumpIfNot-shape (2-byte offset + 1 sub-expr).
                 // GNatives[0x29] = sub_7FF6CD2F0630 reads u16 (offset), reads byte (sub-opcode),
                 // dispatches sub-opcode, then `Code = ScriptStart + offset`. Wire format matches

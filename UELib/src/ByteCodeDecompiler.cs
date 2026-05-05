@@ -240,35 +240,28 @@ namespace UELib.Core
                             // position (or skip ahead by 1 byte if it's still at the failing
                             // byte). Advance ScriptPosition just enough to guarantee progress.
                             LastIterationRecovered = true;
-                            int bufferPos = (int)(_Buffer.Position - _Container.ScriptOffset);
+                            long bufferStart = _Buffer.Position;
+                            int bufferPos = (int)(bufferStart - _Container.ScriptOffset);
 
-                            // Force at least 1 byte of disk progress so the loop can't spin.
-                            // posBefore-equivalent on disk is "the byte that was the opcode for
-                            // this iteration"; we always want to skip past that.
-                            int recoveredScript = ScriptPosition;
-                            if (recoveredScript <= posBefore) recoveredScript = posBefore + 1;
-                            if (bufferPos < scriptSize && bufferPos >= diskBytes)
+                            // Stop if the throwing token already walked off the end of the
+                            // on-disk script (an over-reading token consumed past the
+                            // function's bytecode). Continuing emits phantom tokens read
+                            // from the next function's bytes.
+                            if (bufferPos >= diskBytes)
                             {
-                                // Buffer cursor walked off the end of the on-disk script —
-                                // an over-reading token consumed past the function's
-                                // bytecode. Stop rather than emit phantom tokens.
                                 break;
                             }
-                            // If the buffer is still pointing at (or before) the failing
-                            // opcode byte, force-advance it to the next byte.
-                            int failingOpByteOnDisk = (int)(_Buffer.Position - _Container.ScriptOffset);
-                            if (failingOpByteOnDisk <= posBefore - (ScriptPosition - bufferPos))
-                            {
-                                // Pathological: nothing was consumed. Skip 1 byte.
-                                try { _Buffer.Position += 1; }
-                                catch { break; }
-                            }
-                            // Stop if we'd exit the function in-memory.
-                            if (recoveredScript >= scriptSize) break;
 
+                            // Advance ScriptPosition (in-memory) by at least 1 byte to
+                            // guarantee progress. The buffer is left at the post-throw
+                            // disk position — do NOT seek it to ScriptOffset + ScriptPosition,
+                            // since ScriptPosition is in-memory (inflated by AlignObjectSize)
+                            // and that offset can land far past where the throw actually
+                            // happened on disk.
+                            int recoveredScript = ScriptPosition;
+                            if (recoveredScript <= posBefore) recoveredScript = posBefore + 1;
+                            if (recoveredScript >= scriptSize) break;
                             ScriptPosition = recoveredScript;
-                            // Do NOT seek the buffer to ScriptOffset + ScriptPosition —
-                            // ScriptPosition is in-memory space, not a disk offset.
                         }
                     }
                 }
