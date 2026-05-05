@@ -1,5 +1,14 @@
 # Rocket League opcode analysis
 
+> **⚠️ Validate before acting.** Every "verified" claim in this changelog is a
+> snapshot in time. If a current observation contradicts an entry below, that's
+> a signal to re-RE the byte and **ask the user** — not to silently rewrite
+> this doc and proceed. The 2026-05-05 session found that "byte 0x2C =
+> StatementWrapper" had been wrong for sessions because no one cross-checked
+> GNatives against `UStruct::SerializeExpr`. The runtime handler and the
+> on-disk parser CAN diverge for the same byte; for decompilation, the parser
+> at `sub_7FF6CD38C840` (`UStruct__SerializeExpr` in the IDB) is authoritative.
+
 > **STATUS UPDATE (2026-05-04 evening — comprehensive RE pass complete)**
 >
 > Primary opcode map is comprehensively verified against the binary. The

@@ -335,11 +335,17 @@ When a new RL build is dumped:
    4-byte index in parser), optional debug-info / alignment reads, and
    JumpIfNot CodeOffset (u16 parsed, interpreted as in-memory `Position`,
    subject to cooker undercount — recovery in `JumpTokens.cs`).
-   Note: `sub_7FF6CD38C840` (referenced from the `Bad expr token %02x`
-   string in `FScriptSerializer.cpp`) is **not** the real on-disk parser —
-   its opcode permutation differs from real bytecode. Find the real
-   parser by following `funcs_X[v3]` from step 1 into its containing
-   function.
+   Note: `sub_7FF6CD38C840` (renamed `UStruct__SerializeExpr` in the IDB,
+   referenced from the UTF-16 string `L"Bad expr token %02x"`) **IS the real
+   on-disk parser** for v868 RL bytecode. An earlier session committed a
+   warning that its opcode permutation differed from real bytecode — that
+   warning was wrong (verified 2026-05-05 by cross-checking case 0x4C →
+   Let, 0x65 → LocalVar, 0x29 → JumpIfNot, 0x3E → EndFunctionParms, 0x2C →
+   EX_Conditional). The on-disk parser and the GNatives runtime handler
+   CAN diverge for a byte (case 0x2C is the proof: parser reads 3 sub +
+   2 u16, runtime reads 1 sub + 1 byte) — for decompilation, **prefer the
+   parser**. Enable UTF-16 string detection in IDA before searching, or
+   the lookups return 0 hits.
 
 6. **Verify by output.** Decompile a few sentinel functions
    (`Pawn.SpawnDefaultController`, `PRI_TA.SetLoadouts`, `Ball_TA.PostBeginPlay`,

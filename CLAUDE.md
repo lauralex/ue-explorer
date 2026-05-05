@@ -8,6 +8,40 @@ This is the **Rocket League fork** of [UE Explorer](https://github.com/UE-Explor
 
 RL packages are encrypted; UELib does not decrypt them. They must first be processed with [RLUPKTool](https://github.com/AltimorTASDK/RLUPKTool) before being opened.
 
+## ⚠️ Validation discipline (read first)
+
+**Every claim in this file and in `UELib/src/Branch/UE3/RL/snapshots/*.md` is a
+snapshot in time. Past sessions have committed wrong claims** — the most recent
+example was a warning that `sub_7FF6CD38C840` was NOT the real parser; it
+actually IS, and the wrong warning misled work for hours before the user pointed
+it out. Treat every documented byte→token mapping, handler-address assertion, or
+"verified" wire format as a *hypothesis to re-check*, not as ground truth.
+
+**Before acting on a documented claim:**
+1. **Verify the binary still matches.** Re-decompile the cited handler in IDA,
+   re-read `UStruct::SerializeExpr`'s case for the byte, or re-disassemble a
+   function that exercises the byte. Do NOT skip this step even if the claim
+   looks recent.
+2. **If the claim contradicts what you observe, STOP and ask the user.** Do not
+   silently "correct" the doc and proceed — the discrepancy might mean either
+   the doc is stale OR your observation is misreading the binary, and the user
+   has context (RL build version, which IDB is open, recent fixtures, anything
+   they tested manually) that you don't.
+3. **After verifying or correcting, update the doc in the same commit as the
+   work that depends on it.** Stale claims compound across sessions.
+
+**What this looks like in practice:**
+- Memory says "byte 0x2C = StatementWrapper" but the cooked bytecode at the
+  site has 3 sub-expressions following → STOP, ask "the runtime handler reads
+  1 sub + 1 byte but the cooked stream has more — should I cross-check
+  `UStruct::SerializeExpr`?"
+- Sentinel function listed as "currently broken" decompiles cleanly → STOP,
+  ask "the doc marks `IsGroundHit` as broken but the current output is clean
+  — has this been fixed since the doc was written?"
+- Stock UE3 says `EX_X = 0xYY`, RL snapshot says different byte → that's
+  normal (RL rotates), but verify the current byte by checking BOTH the v868
+  GNatives table AND `UStruct::SerializeExpr`, never by trusting either alone.
+
 ## Test packages — version pitfall
 
 When verifying token-map changes against actual bytecode, the `.upk` files **must come from the same RL build** as whatever binary is open in IDA / being reverse-engineered. RL rotates its opcode permutation across patches, so a SerializeExpr in the current binary can dispatch byte `0x3E` as EndFunctionParms while older `.upk` files on disk still emit `0x4C` for the same role. A version mismatch silently invalidates every shape inference made from the binary.
@@ -76,7 +110,8 @@ These functions span the common bytecode patterns. After each rebuild, decompile
 | `Ball_TA.OnCarTouch`                           | optional-arg-skip (0x31) + super-call                              |
 | `Ball_TA.EnableOwnerTranslucency`              | foreach + `new(...)` + multi-statement body                        |
 | `Ball_TA.Explode`                              | `new(...)`, dynamic-cast `Class(value)`, multi-arg Spawn variant   |
-| `Ball_TA.IsGroundHit`                          | ternary `? :` (currently broken — sentinel for that work)          |
+| `Ball_TA.IsGroundHit`                          | ternary `? :` (byte 0x2C = EX_Conditional)                          |
+| `Car_TA.GetPreviewTeamIndex`                   | none-coalesce `??` (byte 0x5B = StructDefaultParameter, defensive ReadObject required) |
 | `PRI_TA.SetLoadouts`                           | `while(...)` loops with `++Index` updates                           |
 | `PRI_TA.PostBeginPlay`                         | many `new(...)` patterns + optional default args                   |
 | `PRI_TA.HandlePlayerNameChanged`               | nested if + GetSingleton + comparison                              |
@@ -120,6 +155,13 @@ Always verify against the **binary handler**, not the rendered output. The 0x21 
 
 ### Tautological mapping (the 0x21 trap)
 A byte mapping is *tautological* when it's chosen because the rendered output looks plausible, not because the binary handler actually has that wire format. The 0x21 case: rendered as `foreach` because mapped to `DynamicArrayIteratorToken`, which made the rendered text say `foreach`, which "verified" the mapping. The binary handler at `GNatives[0x21]` reads only **one** sub-expression — incompatible with DynArrayIterator's 4-sub + byte + u16 layout. Always derive the wire format from `mcp__ida-pro-mcp__decompile` of the handler, never from the rendered output.
+
+### Use stock UE3 source as the wire-format reference
+Stock UE3 source is checked out at `C:\Users\Authority\Desktop\C++ projects\UnrealEngine3`. Two files matter for opcode work:
+- `Development\Src\Core\Inc\UnStack.h` — defines the `EExprToken` enum with stock byte values (e.g. `EX_Conditional = 0x45`, `EX_DebugInfo = 0x41`). RL rotates these byte values, but the *wire format per opcode* (3 subs + 2 u16, etc.) is the same in this fork.
+- `Development\Src\Core\Inc\ScriptSerialization.h` — contains the giant switch (included into `UStruct::SerializeExpr` in `UnClass.cpp`) with one case per `EX_*` opcode and the exact wire format (XFER macros for byte/word/UField/UProperty, recursive `SerializeExpr` calls for sub-expressions). Search this when you need to know "what shape does EX_Foo have on disk".
+
+Workflow when a byte's wire format is unclear: pick a stock `EX_X` you suspect a v868 byte maps to, read its case in `ScriptSerialization.h`, then locate the matching wire format in `UStruct__SerializeExpr` (sub_7FF6CD38C840) — the byte that produces that identical shape is RL's rotation of `EX_X`.
 
 ### Position vs Storage scaling
 Cooked RL bytecode stores object pointers as 4-byte indices on disk but expands them to 8-byte pointers in memory. The parser tracks both `Position` (in-memory, after expansion) and `StoragePosition` (on-disk, before expansion). They diverge as the parser encounters object/property reads.
@@ -184,7 +226,28 @@ When investigating a byte that the decompiler outputs garbage for:
    - **`EX_DebugInfo` / optional padding / alignment reads** — these usually live in the parser path only.
    - **JumpIfNot / Case / Jump `CodeOffset`** — read by the parser as u16, interpreted by the renderer as in-memory `Position`. The cooker may undercount, which manifests as `if(...)` braces in wrong places (recovery lives in `JumpTokens.cs` — case A: CodeOffset inside JumpIfNot's own bytes, case B: CodeOffset mid-body-token).
 
-   Finding the real parser: it's a *separate* function from GNatives, with its own dispatch table whose indices line up with the on-disk byte values. **Don't trust the function referenced from the `Bad expr token %02x` string in `FScriptSerializer.cpp`** (`sub_7FF6CD38C840` in v868) — its opcode permutation does NOT match real bytecode (it expects `0x3E` for the variadic terminator while real bytecode uses `0x4C`), so its case numbers are misleading. Find the actual parser by following the `funcs_X[v3]` indexing pattern from "Opcode rotation" step 1 above into its containing function, then verify it reads from the script stream for the byte you're investigating.
+   **Finding the on-disk parser** (`UStruct::SerializeExpr`): in v868 it's
+   `sub_7FF6CD38C840` (renamed `UStruct__SerializeExpr` in the IDB). It's
+   referenced from the UTF-16 string `L"Bad expr token %02x"` (default case)
+   and `L"Bad array token %02x"` (inner switch for byte 0x19's dynarray sub-
+   table). **Enable UTF-16 string detection in IDA before searching** —
+   without it the string lookups return 0 hits and you'll wrongly conclude the
+   parser was stripped from the binary.
+
+   The byte permutations in `UStruct__SerializeExpr` ARE the v868 permutations
+   (verified by cross-checking case 0x4C → Let, 0x65 → LocalVar, 0x29 →
+   JumpIfNot, 0x3E → EndFunctionParms terminator, etc.). An earlier session
+   committed a warning that `sub_7FF6CD38C840` had a wrong opcode permutation
+   — that warning was wrong, and following it cost hours before the user
+   intervened. **Do not re-introduce that warning.**
+
+   **GNatives runtime vs UStruct::SerializeExpr parser CAN diverge for the
+   same byte.** Case 0x2C is the proof: GNatives[0x2C] reads "1 sub + 1 byte
+   + optional 0x20" (debug-mode instrumentation), while
+   `UStruct::SerializeExpr` case 0x2C reads "1 sub + u16 + 1 sub + u16 + 1
+   sub" (= EX_Conditional). The cooker emits the SerializeExpr-shape, and the
+   package loader walks it as that shape, so for **decompilation the parser
+   is authoritative**. Always cross-check both.
 5. **Match against baseline EX_** — compare to stock UE3 `SerializeExpr` cases (or to other RL handlers with the same shape).
 6. **Pick / write a token class** that matches the wire format exactly — including `AlignObjectSize` / `AlignSize(N)` calls so `ScriptPosition` stays in lock-step with the stream. Map the byte in `BuildTokenMap`.
 7. **Test.** Decompile a function that contains the byte and check the output. If the output is broken, **don't tweak the rendering to make it look right** — re-verify both the GNatives handler AND the parser. The 0x21 lesson applies: tautological mapping causes cascading errors.

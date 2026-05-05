@@ -1,5 +1,16 @@
 # RL GNatives Handler Catalog — Binary-Verified
 
+> **⚠️ DEPRECATED for cross-version work.** Superseded by
+> `GNATIVES_SNAPSHOT_v868.md` which has the canonical per-byte handler-address
+> table plus the cross-version comparison procedure. Kept here as historical
+> context only — do not update this file; update the snapshot.
+>
+> Also: this file documents only the **runtime GNatives** view. As of
+> 2026-05-05 it's known that the runtime handler and the on-disk parser
+> (`UStruct::SerializeExpr` at `sub_7FF6CD38C840`) CAN diverge for a byte
+> (case 0x2C / EX_Conditional). For decompilation work, also check the
+> parser case in the snapshot doc.
+
 Reverse-engineered from `RocketLeague_Dumped_latest.exe` GNatives table at `0x7FF6CF2AA580`.
 Each handler's runtime behavior was decompiled and matched to a baseline UE3 EX_ via
 unique-string fingerprints, byte-read patterns, and structural fingerprints.
