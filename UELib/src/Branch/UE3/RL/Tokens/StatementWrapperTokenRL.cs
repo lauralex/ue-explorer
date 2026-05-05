@@ -18,16 +18,42 @@ namespace UELib.Branch.UE3.RL.Tokens;
 /// </summary>
 public class StatementWrapperTokenRL : UStruct.UByteCodeDecompiler.Token
 {
+    private bool _SubFailed;
+
     public override void Deserialize(IUnrealStream stream)
     {
-        DeserializeNext();
+        // Inside variadic LogInternal-style calls the sub-expression sometimes
+        // fails to deserialize (NTL drift, unmapped chained-native, etc.).
+        // Without recovery the failure cascades — every following sibling parses
+        // as size-0 and the whole call's argument list scrambles. Wrap so the
+        // trailer byte still gets consumed and parsing continues at the next
+        // sibling boundary even when the wrapped sub couldn't be parsed.
+        try
+        {
+            DeserializeNext();
+        }
+        catch
+        {
+            _SubFailed = true;
+        }
 
-        stream.ReadByte();
-        Decompiler.AlignSize(sizeof(byte));
+        try
+        {
+            stream.ReadByte();
+            Decompiler.AlignSize(sizeof(byte));
+        }
+        catch
+        {
+            // Buffer exhausted at the trailer — give up gracefully.
+        }
     }
 
     public override string Decompile()
     {
+        if (_SubFailed)
+        {
+            return "/* unwrapped */";
+        }
         return DecompileNext();
     }
 }
