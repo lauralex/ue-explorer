@@ -225,7 +225,24 @@ When a new RL build is dumped:
 4. **Update the byte→token map** in `EngineBranch.RL.cs` `BuildTokenMap`
    to reflect the new bytes for the same handlers.
 
-5. **Verify by output.** Decompile a few sentinel functions
+5. **Cross-check the on-disk parser function.** GNatives is the runtime
+   dispatcher; the parser (UStruct::SerializeExpr-equivalent) reads bytes
+   at script-load time and applies the 4→8 object index expansion that the
+   runtime never sees. For each remapped byte, verify the parser reads the
+   same token-shape modulo storage-vs-memory size — a token whose
+   `Deserialize` reads the wrong number of *storage* bytes silently
+   desyncs `ScriptPosition` and corrupts every following token. Watch for:
+   object/property/function index reads (8-byte qword in GNatives,
+   4-byte index in parser), optional debug-info / alignment reads, and
+   JumpIfNot CodeOffset (u16 parsed, interpreted as in-memory `Position`,
+   subject to cooker undercount — recovery in `JumpTokens.cs`).
+   Note: `sub_7FF6CD38C840` (referenced from the `Bad expr token %02x`
+   string in `FScriptSerializer.cpp`) is **not** the real on-disk parser —
+   its opcode permutation differs from real bytecode. Find the real
+   parser by following `funcs_X[v3]` from step 1 into its containing
+   function.
+
+6. **Verify by output.** Decompile a few sentinel functions
    (`Pawn.SpawnDefaultController`, `PRI_TA.SetLoadouts`, `Ball_TA.PostBeginPlay`,
    `Ball_TA.EnableOwnerTranslucency`) — these should render cleanly with the
    correct map. Use the `Test workflow` section in `CLAUDE.md`.

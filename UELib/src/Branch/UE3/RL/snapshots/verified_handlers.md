@@ -131,8 +131,24 @@ unique-string fingerprints, byte-read patterns, and structural fingerprints.
 - Each `execXxx` in the binary corresponds 1:1 to a baseline `case EX_Xxx:` in `SerializeExpr`.
 - Runtime dispatch is via `funcs_7FF6CD28592F[opcode_byte]` (direct indexing — verified by the
   default error handler reading `Code[-1]`).
-- The PARSER (UStruct::SerializeExpr-equivalent, on-disk) is in a different function but reads the
-  same bytes the runtime does. So matching the runtime byte-read pattern fixes both.
+- **Always verify both GNatives AND the on-disk parser** before mapping a byte. The parser
+  (UStruct::SerializeExpr-equivalent) is in a different function from GNatives. For most opcodes
+  the byte counts agree, but they DIVERGE in load-bearing ways:
+  - 4-byte object/property/function indices in storage expand to 8-byte pointers in memory; only
+    the parser sees the storage form, so the GNatives qword read tells you the runtime size, not
+    the on-disk size. Tokens that mishandle this desync `ScriptPosition` against the stream and
+    corrupt every following token.
+  - `EX_DebugInfo`, optional alignment reads, and similar parse-time decoration usually live only
+    in the parser path.
+  - `JumpIfNot` / `Case` / `Jump` `CodeOffset` is parsed as a u16 then interpreted by the renderer
+    as in-memory `Position`. The cooker can undercount, requiring the recovery logic in
+    `JumpTokens.cs` (case A: CodeOffset inside JumpIfNot's own bytes; case B: CodeOffset
+    mid-body-token).
+- The function `sub_7FF6CD38C840` (referenced from the `Bad expr token %02x` string in
+  `FScriptSerializer.cpp`) is **not** the on-disk parser — its opcode permutation differs from real
+  bytecode (expects `0x3E` for the variadic terminator, real bytecode uses `0x4C`). Use it only as
+  a shape corroborator after the on-disk byte is known by other means; do not read its case numbers
+  as on-disk byte values.
 - DeserializeCall in UELib's FunctionTokens.cs:38 terminates by `is EndFunctionParmsToken` token-type
   check — swapping the byte→EndFunctionParms mapping is sufficient (no string-literal byte changes
   needed elsewhere in the codebase).

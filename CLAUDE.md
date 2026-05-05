@@ -162,7 +162,8 @@ RL rotates its UnrealScript opcode permutation across patches — the same `EX_L
 1. **Dump the new GNatives table.** Find the new dispatcher base by searching for the `funcs_X[v3]` indexing pattern in `UStruct::SerializeExpr` (or grep for the "Unknown code token %02X" string and follow xrefs to the error handler — the error handler appears in many GNatives slots and anchors the table).
 2. **Compare against the v868 snapshot** in `GNATIVES_SNAPSHOT_v868.md`. For each handler address from v868, find which byte in the new table points to that same handler (modulo ASLR). When a known handler appears at a new byte index, that byte rotated.
 3. **Update `BuildTokenMap`** to the new bytes for the same handler→token mapping.
-4. **Verify with the sentinel function set** (see "Testing workflow" above). If any baseline function regresses, the mapping is wrong somewhere.
+4. **Cross-check the parser function.** GNatives gives runtime semantics; the on-disk parser gives storage-side wire format (4-byte index reads, optional debug-info skips, JumpIfNot CodeOffset interpretation). For most rotated bytes the parser's structure follows GNatives, but verify byte-by-byte that the parser reads the same token-shape modulo expansion — a token whose `Deserialize` reads the wrong number of storage bytes will silently desync `ScriptPosition` and corrupt every subsequent token. See "Binary RE methodology" step 4 for what to watch for.
+5. **Verify with the sentinel function set** (see "Testing workflow" above). If any baseline function regresses, the mapping is wrong somewhere.
 
 The handler-address table in `GNATIVES_SNAPSHOT_v868.md` is the **stable** view — the byte values are not. Anchors (unique runtime fingerprint strings) listed at the bottom of the snapshot file are the most reliable way to identify a specific handler in a fresh dump.
 
@@ -178,9 +179,15 @@ When investigating a byte that the decompiler outputs garbage for:
    - 8-byte qword reads = either UObject*, UProperty*, UClass*, FName, or a raw 8-byte literal.
    - Calls to `sub_7FF6CD317F00` (FFrame::ReadVariableSize) = UField* + 1 byte type.
    - Sub-table dispatchers (`funcs_Y[v]` where Y != GNatives) = secondary lookups for primitive cast / dynarray method / etc.
-4. **Match against baseline EX_** — compare to stock UE3 `SerializeExpr` cases (or to other RL handlers with the same shape).
-5. **Pick / write a token class** that matches the wire format exactly. Map the byte in `BuildTokenMap`.
-6. **Test.** Decompile a function that contains the byte and check the output. If the output is broken, **don't tweak the rendering to make it look right** — re-verify the binary handler. The 0x21 lesson applies: tautological mapping causes cascading errors.
+4. **Cross-check the parse-time wire format.** GNatives is the *runtime* dispatcher — it operates on the in-memory bytecode after the parser already applied 4→8 object/property/function index expansion, optional debug-info skips, and other on-disk decoration. For most opcodes the two agree, but **they diverge for any byte that touches storage representation**, and getting that wrong silently breaks parsing. Always confirm against the on-disk parser for:
+   - **Object/property/function index reads** — 8-byte qword in GNatives = 4-byte index + 4-byte expansion in storage. The token's `Deserialize` must read 4 from the stream and call `AlignObjectSize()` (which advances `Position` by 8 to track in-memory size).
+   - **`EX_DebugInfo` / optional padding / alignment reads** — these usually live in the parser path only.
+   - **JumpIfNot / Case / Jump `CodeOffset`** — read by the parser as u16, interpreted by the renderer as in-memory `Position`. The cooker may undercount, which manifests as `if(...)` braces in wrong places (recovery lives in `JumpTokens.cs` — case A: CodeOffset inside JumpIfNot's own bytes, case B: CodeOffset mid-body-token).
+
+   Finding the real parser: it's a *separate* function from GNatives, with its own dispatch table whose indices line up with the on-disk byte values. **Don't trust the function referenced from the `Bad expr token %02x` string in `FScriptSerializer.cpp`** (`sub_7FF6CD38C840` in v868) — its opcode permutation does NOT match real bytecode (it expects `0x3E` for the variadic terminator while real bytecode uses `0x4C`), so its case numbers are misleading. Find the actual parser by following the `funcs_X[v3]` indexing pattern from "Opcode rotation" step 1 above into its containing function, then verify it reads from the script stream for the byte you're investigating.
+5. **Match against baseline EX_** — compare to stock UE3 `SerializeExpr` cases (or to other RL handlers with the same shape).
+6. **Pick / write a token class** that matches the wire format exactly — including `AlignObjectSize` / `AlignSize(N)` calls so `ScriptPosition` stays in lock-step with the stream. Map the byte in `BuildTokenMap`.
+7. **Test.** Decompile a function that contains the byte and check the output. If the output is broken, **don't tweak the rendering to make it look right** — re-verify both the GNatives handler AND the parser. The 0x21 lesson applies: tautological mapping causes cascading errors.
 
 ## Solution layout
 
