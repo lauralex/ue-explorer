@@ -533,12 +533,25 @@ namespace UELib.Branch.UE3.RL
                 // the canonical EX_UnicodeStringConst runtime behavior.
                 // Was wrongly mapped to TrueToken; True is now at 0x3A.
                 { 0x51, typeof(UnicodeStringConstToken) },
-                // 0x52: VERIFIED 1-sub-expr passthrough (NOT DynamicCast).
-                // GNatives[0x52] = sub_7FF6CD2ED450 reads 1 sub-expr and writes 0 to result
-                // slot. Same shape as 0x15 (sub_7FF6CD2F59D0 — also a 1-sub-discard wrapper).
-                // DynamicCast in baseline UE3 has wire format `1 byte + UClass* + 1 sub` —
-                // doesn't match. Mapping to EatReturnValue (1-sub passthrough).
-                { 0x52, typeof(EatReturnValueTokenRL) },
+                // 0x52: VERIFIED 1-sub-expression discard wrapper.
+                // GNatives[0x52] = sub_7FF6CD2ED450 reads 1 sub-opcode, dispatches, then
+                // writes 0 to result slot (discards inner value). Parser case 0x52 in
+                // UStruct::SerializeExpr falls into LABEL_70 (one recursive serialize call =
+                // 1 sub-expression). Both runtime and parser agree on wire format.
+                //
+                // Was mapped to EatReturnValueTokenRL (UProperty leaf — 4 disk → 8 mem). That
+                // wire format mismatch caused downstream parser desync visible in
+                // OnlinePlayerInterfaceEOS.RequestNativePlatformAuthTicket: byte 0x52 in
+                // a Context's sub-A position was treated as `op + UProperty index`, so
+                // bytes that were actually a sub-expression's body got eaten as a UProperty
+                // index (which threw on lookup), and downstream tokens cascaded with
+                // size-0 throws.
+                //
+                // BoolVariableToken (already at 0x06 / 0x66) is a clean 1-sub passthrough:
+                // Deserialize calls DeserializeNext(); Decompile returns DecompileNext().
+                // Same shape as parser group {0, 1, 6, 0x15, 0x17, 0x46, 0x52, 0x5C, 0x66}
+                // — all LABEL_70 entries.
+                { 0x52, typeof(BoolVariableToken) },
                 // 0x53: VERIFIED StructCmpEq/Ne (8-byte UStruct* + 2 sub-exprs + struct comparison).
                 // GNatives[0x53] = sub_7FF6CD2F6240 reads 8-byte UStruct*, allocates two struct
                 // buffers, dispatches sub-opcode A (writes to buf1), dispatches sub-opcode B
