@@ -222,6 +222,40 @@ The RocketLeague_Dumped_latest.exe IDB has been annotated with:
   `execDynArrayMethodDispatcher` (0x19's sub-table entry),
   `execPrimitiveCastDispatcher` (0x6B's cast jump-table).
 
+**SerializeExpr-style functions** annotated as `SerializeExpr_*`:
+
+| Address              | Name                          | Role                                                                    |
+|----------------------|-------------------------------|-------------------------------------------------------------------------|
+| `0x7FF6CD2858E0`     | `SerializeExpr_FString`       | Canonical 1-sub + 0x20-peek pattern, returns FString                    |
+| `0x7FF6CD285B30`     | `SerializeExpr_FStringPtr`    | 1-sub variant returning FString via `sub_7FF6CD2809D0`                  |
+| `0x7FF6CD2859D0`     | `SerializeExpr_StringConcat`  | 2-sub variant for binary string operators                               |
+| `0x7FF6CD285C10`     | `SerializeExpr_3sub`          | 2-sub LHS-as-string dispatcher                                          |
+| `0x7FF6CD285D60`     | `SerializeExpr_FName`         | Single-expression evaluator returning FName                             |
+| `0x7FF6CD285E50`     | `SerializeExpr_NameConcat`    | 2-sub variant for FName operations                                      |
+| `0x7FF6CD285FB0`     | `SerializeExpr_Object`        | Single-expression evaluator returning UObject*                          |
+| `0x7FF6CD2860A0`     | `SerializeExpr_ObjectVariant` | 2-sub variant for object operations                                     |
+| `0x7FF6CD2B61B0`     | `SerializeExpr_2sub_NameOp`   | 2-sub name operator                                                     |
+| `0x7FF6CD2B62E0`     | `SerializeExpr_Concat`        | concat helper                                                           |
+| `0x7FF6CD2B6BB0`     | `SerializeExpr_2sub_Concat`   | concat variant                                                          |
+| `0x7FF6CD2A5D70`     | `SerializeExpr_2sub_StringOp` | 2-sub string operator (clears EmptyParm flag bit 1 between subs)        |
+| `0x7FF6CD2B63C0`     | `execForEachIterator`         | foreach loop over class hierarchy                                       |
+| `0x7FF6CD2B67F0`     | `execForEachClassIterator`    | foreach class iterator (alt)                                            |
+
+**Important note about UStruct::SerializeExpr in v868 RL:**
+
+Stock UE3 has a single recursive `UStruct::SerializeExpr` that contains a giant switch over EExprToken. RL replaces this with a **table-driven** dispatch: `GNatives[byte](Object, Frame)`. Every GNatives handler that reads a sub-expression does its own `byte = *Code++; GNatives[byte](...)` inline — there is no single SerializeExpr loop function.
+
+The `SerializeExpr_*` functions named above are HELPERS used to evaluate one expression and capture its typed result (FString, FName, UObject*, etc.). They follow the canonical pattern:
+```
+v_byte = *Code++;
+GNatives[v_byte](Object, Frame, &outResult);
+if (qword_7FF6CF27D7B0) outPtr = qword_7FF6CF27D7B0;  // forwarded result ptr
+*Code++;                                                // 1 byte trailer (was: EX_DebugInfo 'OldOpCode')
+if (*Code == 0x20) HandleOptionalDebugInfo(...);       // peek for debug marker
+```
+
+The package-load deserializer already byte-walks the bytecode before any of these run. The actual byte-stream reader at load time is part of `UStruct::Serialize` (the FArchive serializer for UStruct), which calls into `GNatives[byte]` recursively to walk every expression.
+
 Anchor strings still useful for cross-version dumps:
 - `"Unknown code token %02X"` → xref → `execScriptError_UnknownToken` (default-error stub address; appears in many slots)
 - `"Attempt to assign variable through None"` → `execLet`
