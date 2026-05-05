@@ -161,9 +161,13 @@ namespace UELib.Branch.UE3.RL
                 // `SpecialPickup_Targeted_TA != NewPickup` (just the class name compared to
                 // the value, with the cast operation lost).
                 { 0x1A, typeof(DynamicCastToken) },
-                // 0x1B: 2 sub-exprs + 1 byte + optional debug. Was MetaClassCast (UClass + 1
-                // sub) — wire format mismatch. Conservative passthrough until verified usage.
-                { 0x1B, typeof(MetaClassCastToken) },
+                // 0x1B: VERIFIED variadic body until 0x3E + optional debug — same parser case
+                // as 0x05/0x16/0x54 in UStruct::SerializeExpr (sub_7FF6CD38C840). Cooker emits
+                // 2 sub-exprs + 0x3E terminator (matches ArrayElement layout). Runtime handler
+                // sub_7FF6CD2F6AE0 dispatches both subs then writes 0 to result — RL no-op
+                // / debug-discard variant. Was MetaClassCastToken (UClass + 1 sub) — wire
+                // format mismatch caused 8-byte over-read whenever this byte appeared.
+                { 0x1B, typeof(DynamicArrayElementToken) },
                 // 0x1C: VERIFIED IntZero/False (writes 4-byte 0).
                 // GNatives[0x1C] = sub_7FF6CD2F7030 (8-byte function): `*(_DWORD*)a3 = 0;`.
                 // Aliased with 0x27 (same handler). Was wrongly mapped to RotationConst.
@@ -351,7 +355,14 @@ namespace UELib.Branch.UE3.RL
                 // VectorConstToken (12 bytes — under-read by 3 bytes per occurrence and emitted
                 // a vect() literal instead of a property assignment).
                 { 0x36, typeof(PropertySetterDiscardTokenRL) },
-                { 0x37, typeof(FloatConstToken) },
+                // 0x37: VERIFIED 2 sub-exprs + u16 + variadic body + 0x3E + optional debug.
+                // UStruct::SerializeExpr (sub_7FF6CD38C840) case 0x37 explicitly reads this
+                // shape; runtime handler GNatives[0x37] (sub_7FF6CD2F5810) gates the variadic
+                // dispatch on receiver being non-null. New token NullConditionalCallTokenRL
+                // matches the parser exactly. Not observed in TAGame/Engine fixtures yet —
+                // defensive remap. Was FloatConstToken (4-byte literal — would under-read
+                // significantly and corrupt the rest of any function containing 0x37).
+                { 0x37, typeof(NullConditionalCallTokenRL) },
                 // 0x38: VERIFIED ClassContext (NOT FinalFunction).
                 // GNatives[0x38] = sub_7FF6CD308710 has unique runtime error
                 // "Accessed null class context '%s'" — that string is the EX_ClassContext
@@ -518,9 +529,11 @@ namespace UELib.Branch.UE3.RL
                 // with no sub-exprs — left both sub-opcodes to be parsed as siblings, scrambling
                 // surrounding context).
                 { 0x53, typeof(StructCmpEqToken) },
-                // 0x54: 1-sub-token wrapper — tied across EatReturnValue, several Casts,
-                // ReturnNothing. Pick EatReturnValueToken (simplest pass-through).
-                { 0x54, typeof(EatReturnValueToken) },
+                // 0x54: VERIFIED variadic body until 0x3E + optional debug — alias of 0x1B,
+                // shares same parser case as 0x05/0x16 in UStruct::SerializeExpr. See 0x1B
+                // entry above. Was EatReturnValueToken (reads UProperty in version >= 201) —
+                // wrong wire format, would over-read by 4-8 bytes per occurrence.
+                { 0x54, typeof(DynamicArrayElementToken) },
                 // 0x55: VERIFIED InstanceVariable (UProperty* relative to `this`).
                 // GNatives[0x55] = sub_7FF6CD2ED270 reads 8-byte UProperty*, computes address
                 // as `a1 + property_offset` where a1 == this. Sister opcode to 0x65
