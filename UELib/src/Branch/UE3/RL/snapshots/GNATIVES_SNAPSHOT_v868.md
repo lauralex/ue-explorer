@@ -146,8 +146,45 @@ unmapped in RL and should never appear in valid bytecode.
 
 ### Sub-tables
 
-- **0x19's dynarray-method sub-table**: `0x7FF6CF2B2D80` (entries: DynArrayElement at +0, DynArrayLength at +1, DynArrayRemove at +2 (TBD), DynArrayFind at +3, DynArrayAdd at +6, DynArrayAddItem at +7, DynArrayRemoveItem at +8, DynArrayIterator at +0x0A, DynArrayConcat at +0x0B, ...). See `EngineBranchRL.s_extendedNativeFunctionTokenMap` for the parsed view.
-- **0x6B's primitive-cast sub-table**: `funcs_7FF6CD2F735D` (one handler per cast type: IntToFloat, ByteToInt, etc.)
+- **0x19's dynarray-method sub-table**: `0x7FF6CF2B2D80` (64 entries × 8 bytes = 512 bytes).
+  Mapped entries (in `ExtendedNativeFunctionToken.s_extendedNativeFunctionTokenMap`):
+  +0 DynamicArrayElementTokenRL, +1 DynArrayLength, +3 DynArrayRemove, +4
+  DynArrayFindContains, +5 DynArrayFindStruct, +6 DynArrayAdd, +7
+  DynArrayAddItem, +8 DynArrayRemoveItem, +0x0A DynArrayIterator, +0x0B
+  VariadicArrayConcat, +0x0C VariadicArrayAddUniqueItems, +0x0D
+  DynArrayAddUniqueItem, +0x21 DynArrayFilterOut, +0x22 DynArrayMap, +0x24
+  FindFirstWithDelegate, +0x25 DynArrayEvery, +0x26 DynArrayAny, +0x28
+  VariadicArrayFillOut, +0x29 DynArrayFilter, +0x2C DynArrayEqual, +0x30
+  DynArrayFindType, +0x31 DynArrayConcat.
+
+  Unmapped sub-bytes whose handlers are NOT the error stub (i.e., real
+  array methods that *could* appear in cooked bytecode but currently
+  fall through to the `__NFUN_5XXX__` ghost-native path):
+  - +0x02 sub_7FF6CD2EDE80 — 3 sub-exprs (3-arg array method, role TBD)
+  - +0x09 sub_7FF6CD2EF2C0 — DynArrayInsert (3 sub + bounds check, error
+    string `"Attempt to insert an element at %i an %i-element array '%s'"`)
+  - +0x0E sub_7FF6CD2EFBA0 — 2 sub-exprs + delegate cleanup (Sort variant?)
+  - +0x0F sub_7FF6CD2EFDE0 — sister to 0x0E
+  - +0x20 sub_7FF6CD2F4F60 — 4 sub-exprs (TBD)
+  - +0x23 sub_7FF6CD2F26D0 — DynArrayReduce (4 sub + reduce-fn lookup,
+    error strings `"DynArrayReduce: Failed to find 2nd parameter property"`,
+    `"DynArrayReduce: Failed to find reduce function"`)
+  - +0x27 sub_7FF6CD2F3200, +0x2A sub_7FF6CD2F47F0, +0x2B sub_7FF6CD2F4970,
+    +0x2D sub_7FF6CD2F45D0, +0x2E sub_7FF6CD2F51E0, +0x2F sub_7FF6CD2F2200,
+    +0x32 sub_7FF6CD2F3600, +0x33 sub_7FF6CD2F38A0, +0x34 sub_7FF6CD2F55A0,
+    +0x35 sub_7FF6CD2EDB50 — additional unmapped real handlers, shapes TBD.
+
+  Sub-bytes 0x10-0x1F and 0x36-0x3F all point to the error handler (intentionally
+  reserved). No observed regression in any sentinel/failing function from
+  the unmapped slots above; flip them speculatively only with concrete
+  evidence per the tautological-mapping anti-pattern.
+
+- **0x6B's primitive-cast sub-table**: `funcs_7FF6CD2F735D`. Despite the
+  `funcs_` IDA name, the bytes at this address are inlined `jmp r9` jump-
+  table machine code, not a function-pointer table — the dispatcher resolves
+  cast types through a switch-jump pattern. The baseline UE3 `CastToken`
+  enum (IntToFloat, ByteToInt, ObjectToBool, etc.) is consumed correctly
+  by `PrimitiveCastToken`; no per-cast remapping has been needed.
 
 ### Native dispatchers (0x70..0x7F)
 
