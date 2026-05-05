@@ -71,6 +71,37 @@
 >   `/* unresolved cast */()` cascades affecting many functions including
 >   `Ball_TA.EnableOwnerTranslucency`'s foreach body.
 >
+> - **DynArrayFirst** at byte sequence `0x19 0x2B`. Verified handler
+>   `execDynArrayFirst` (`sub_7FF6CD2F4970`) reads array + u16 metadata +
+>   predicate delegate + start index + count + terminator. This removes
+>   `__NFUN_5043__` ghost natives from predicate-based array searches such
+>   as `AntiCheatMessenger_TA.HandleIncomingMessagePart`.
+>
+> - **LetBool** at primary byte 0x0C. Verified handler
+>   `sub_7FF6CD2F0AA0` reads two sub-expressions and clears the destination
+>   bool bit before applying the RHS. Was `EventSubscribeToken`, which
+>   rendered bool assignments as `+=`.
+>
+> - **Foreach terminator rendering** now treats the implicit
+>   `NothingToken`/`IteratorPopToken` tail at the iterator `CodeOffset` as
+>   loop bookkeeping, not user source. `Ball_TA.EnableOwnerTranslucency`
+>   no longer renders a stray `break;` between the dynamic-array foreach
+>   and `AttachComponent(TranslucentStaticMesh);`. Explicit breaks inside
+>   the foreach body still render because they occur before the iterator
+>   terminator offset.
+>
+> - **Dynamic-array foreach parameter rendering** now unwraps RL's
+>   `DiscardKeep(Nothing, LocalVariable)` parameter wrapper. This changes
+>   `foreach TranslucentMaterials()` back to
+>   `foreach TranslucentMaterials(TranslucentMaterial, Index)` and omits
+>   truly-empty optional index slots such as `GeneratedEvents(Evt, ,)`.
+>
+> - **Chained-native low-byte collision fix** in `TokenFactory.CreateNativeToken`.
+>   Chained dispatchers such as `0x71 0x02` compute native index 258
+>   (`ClassIsChildOf`). The factory must not route index 258 through the primary
+>   opcode map by low byte `0x02`; doing so threw during deserialize and made
+>   `Actor.FindEventsOfClass` resume mid-condition.
+>
 > - **Optional-arg-skip** at bytes 0x25 and 0x31. Wire format u16 +
 >   conditional sub-expr (sub-expr present when u16 != 0xFFFF). Renders
 >   empty (the default values are part of the function's signature, not
@@ -230,7 +261,7 @@
 > | `Ball_TA` (whole-class decompile)           | All structs, properties, replication blocks, delegates, defaultproperties block render structurally correct |
 > | `PRI_TA.SetLoadouts`                        | for-loops now fold into `Index = 0; while(Index < 2) { body; ++Index; }` — clean while-loop syntax, no orphan `goto J0xN`. (Folding the init+update into a `for(;;)` is task-deferred — the while form preserves semantics.) |
 > | `Car_TA.UpdateTeamLoadout`                  | Clean assignments, member access, `return 0;` `return 1;` properly reconstructed |
-> | `Actor.FindEventsOfClass` (Engine.upk)     | 0x21 remapped (was wrongly DynArrayIterator → now StringCastTokenRL); residual `/* unresolved cast */()` is from 0x19 sub-dispatcher (task #5). Real foreach lives at extended-native `0x10 0x0A` and `0x71 0x39`. |
+> | `Actor.FindEventsOfClass` (Engine.upk)     | Clean dynamic-array foreach: `foreach GeneratedEvents(Evt)` plus readable `ClassIsChildOf(Evt.Class, EventClass)` condition and body. |
 >
 > Original 2026-05-03 milestones below remain valid; this session refined them.
 
@@ -961,6 +992,12 @@ index. The resulting `NativeFunctionToken` then resolves through the loaded
 `UFunction.NativeToken` cache + the binary-extracted `RocketLeagueNativeNames`
 map.
 
+Implementation note: `TokenFactory.CreateNativeToken` may consult the primary
+token map only for one-byte native opcodes (`nativeIndex <= 0xFF`). For chained
+native results above 0xFF, using `(byte)nativeIndex` aliases real natives onto
+rotated primary opcodes; `0x71 0x02` (= native 258, `ClassIsChildOf`) collided
+with primary byte `0x02` and broke `Actor.FindEventsOfClass`.
+
 `RocketLeagueNativeNames.Map` is auto-loaded for any RocketLeague package and
 contains 207 (index, name) pairs spanning 29..3971: the byte-level operator
 natives (Add_IntInt, Cos, Min, FastTrace's namespace), actor/controller-class
@@ -1018,9 +1055,10 @@ registrations through a different mechanism).
 - **NTL drift.** Native function calls still render as `__NFUN_NNN__()` because
   the loaded `.NTL` is from an older RL build. Separate workstream — re-run
   `Eliot.Extensions.NTLGenerator` against the current binary.
-- **NestManager / IteratorPop bookkeeping.** "MISMATCHING REMOVE" warnings still
-  appear when Switch/Case/IteratorPop combinations confuse the nest scope tracker.
-  Decompile-side fix, lower priority than the token-map work.
+- **NestManager / IteratorPop bookkeeping.** The natural foreach terminator no
+  longer leaks as a stray `break;`, but "MISMATCHING REMOVE" warnings can still
+  appear when Switch/Case/IteratorPop combinations confuse the broader nest
+  scope tracker.
 - **Case-0x19 sub-switch decoding** in `sub_7FF6CD38C840` (the IDA function that
   turned out to be `FScriptSerializer`, not the on-disk walker) is no longer
   blocking — empirical inference filled the entire primary table without it.

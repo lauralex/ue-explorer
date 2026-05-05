@@ -17,7 +17,16 @@ public class StructValueTokenRL : UStruct.UByteCodeDecompiler.Token
 
     public override void Deserialize(IUnrealStream stream)
     {
-        StructRef = stream.ReadObject<UStruct>();
+        try
+        {
+            StructRef = stream.ReadObject<UStruct>();
+        }
+        catch
+        {
+            // RL bytecode occasionally carries a stale/non-UStruct index here. The index
+            // has already been consumed by ReadObject; keep walking the wrapped expression.
+            StructRef = null;
+        }
         Decompiler.AlignObjectSize();
 
         DeserializeNext();
@@ -25,7 +34,13 @@ public class StructValueTokenRL : UStruct.UByteCodeDecompiler.Token
 
     public override string Decompile()
     {
+        string expression = DecompileNext();
+        if (StructRef == null)
+        {
+            return expression;
+        }
+
         string structName = StructRef != null ? StructRef.Name.ToString() : "/* unresolved */";
-        return $"{structName}({DecompileNext()})";
+        return $"{structName}({expression})";
     }
 }

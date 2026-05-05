@@ -127,6 +127,57 @@ namespace UELib.Core
                     Decompiler.PreComment = $"// [{statement}]";
                 }
 
+                protected int GetForEachNestEnd()
+                {
+                    int endPosition = CodeOffset;
+                    bool sawTerminatorStart = false;
+
+                    for (int i = Decompiler.DeserializedTokens.IndexOf(this) + 1;
+                         i < Decompiler.DeserializedTokens.Count;
+                         i++)
+                    {
+                        var token = Decompiler.DeserializedTokens[i];
+                        if (token.Position < CodeOffset)
+                        {
+                            continue;
+                        }
+
+                        if (!sawTerminatorStart && token.Position > CodeOffset
+                            && token.Position - CodeOffset > 2)
+                        {
+                            break;
+                        }
+
+                        sawTerminatorStart = true;
+
+                        if (token is IteratorNextToken or IteratorPopToken
+                            || token is NothingToken && token.Size <= 1)
+                        {
+                            endPosition = token.Position + token.Size;
+                            if (token is IteratorPopToken)
+                            {
+                                break;
+                            }
+
+                            continue;
+                        }
+
+                        break;
+                    }
+
+                    return endPosition;
+                }
+
+                protected void AddForEachNest()
+                {
+                    Decompiler._Nester.AddNest(NestManager.Nest.NestType.ForEach, Position, GetForEachNestEnd(), this);
+                }
+
+                protected void SuppressSemicolon()
+                {
+                    Decompiler._CanAddSemicolon = false;
+                }
+
                 /// <summary>
                 /// FORMATION ISSUESSES:
                 ///     1:(-> Logic remains the same)   (Continue) statements are decompiled to (Else) statements e.g.
@@ -190,6 +241,32 @@ namespace UELib.Core
                         {
                             // Jumps to the end of the foreach ?
                             if (CodeOffset == iteratorToken.CodeOffset)
+                            {
+                                if (Decompiler.PreviousToken is IteratorNextToken)
+                                {
+                                    NoJumpLabel();
+                                    return string.Empty;
+                                }
+
+                                NoJumpLabel();
+                                SetEndComment();
+                                Decompiler._CanAddSemicolon = true;
+                                return "break";
+                            }
+
+                            if (Decompiler.TokenAt(CodeOffset) is IteratorNextToken)
+                            {
+                                NoJumpLabel();
+                                SetEndComment();
+                                Decompiler._CanAddSemicolon = true;
+                                return "continue";
+                            }
+                        }
+                        else if (Decompiler.IsWithinNest(NestManager.Nest.NestType.ForEach)?.Creator is DynamicArrayIteratorToken
+                            dynamicIteratorToken)
+                        {
+                            // Jumps to the end of the foreach ?
+                            if (CodeOffset == dynamicIteratorToken.CodeOffset)
                             {
                                 if (Decompiler.PreviousToken is IteratorNextToken)
                                 {
@@ -751,7 +828,7 @@ namespace UELib.Core
             {
                 protected void AddNest()
                 {
-                    Decompiler._Nester.AddNest(NestManager.Nest.NestType.ForEach, Position, CodeOffset, this);
+                    Decompiler._Nester.AddNest(NestManager.Nest.NestType.ForEach, Position, GetForEachNestEnd(), this);
                 }
 
                 protected void RemoveSemicolon()
@@ -767,7 +844,7 @@ namespace UELib.Core
 
                 public override string Decompile()
                 {
-                    Decompiler._Nester.AddNest(NestManager.Nest.NestType.ForEach, Position, CodeOffset, this);
+                    AddNest();
                     SetEndComment();
 
                     // foreach FunctionCall
@@ -806,7 +883,7 @@ namespace UELib.Core
 
                 public override string Decompile()
                 {
-                    Decompiler._Nester.AddNest(NestManager.Nest.NestType.ForEach, Position, CodeOffset, this);
+                    Decompiler._Nester.AddNest(NestManager.Nest.NestType.ForEach, Position, GetForEachNestEnd(), this);
 
                     SetEndComment();
 
@@ -852,6 +929,12 @@ namespace UELib.Core
             {
                 public override string Decompile()
                 {
+                    if (Decompiler.IsWithinNest(NestManager.Nest.NestType.ForEach)?.Creator is JumpToken iterator
+                        && Position >= iterator.CodeOffset)
+                    {
+                        return string.Empty;
+                    }
+
                     if (Decompiler.PreviousToken is IteratorNextToken
                         || Decompiler.PeekToken is ReturnToken)
                     {
@@ -874,7 +957,7 @@ namespace UELib.Core
             ///   1. JumpToken auto-labels (J0xXX) line up with a token's Position
             ///      so `DecompileLabelForToken` actually prints them.
             ///   2. JumpIfNot's if-else detection (elseStartToken.Position ==
-            ///      CodeOffset && prevToken is JumpToken) starts firing for
+            ///      CodeOffset &amp;&amp; prevToken is JumpToken) starts firing for
             ///      cooker-bugged shapes — was failing because CodeOffset landed
             ///      one expansion short of the else-body start.
             /// For JumpIfNot specifically, an additional snap-past-trailing-exit
