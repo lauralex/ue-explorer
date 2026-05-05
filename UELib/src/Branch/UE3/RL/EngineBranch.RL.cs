@@ -187,7 +187,18 @@ namespace UELib.Branch.UE3.RL
                 // `this` to result, the canonical EX_Self runtime behavior. Was wrongly mapped
                 // to LetBool (which reads two sub-expressions).
                 { 0x1F, typeof(SelfToken) },
-                { 0x20, typeof(ReturnToken) },
+                // 0x20: VERIFIED DebugInfo (HANDLE_OPTIONAL_DEBUG_INFO macro).
+                // GNatives[0x20] = sub_7FF6CD3027A0 reads 4-byte Version (mov eax, [r8]), and
+                // if value == 100 reads 4-byte Line, 4-byte TextPos, 1-byte OpCode (13 bytes
+                // payload after the op). If Version != 100 the handler backs up to before the
+                // 0x20 byte (lea rax, [r8-1]) — the conditional-consume pattern of the
+                // HANDLE_OPTIONAL_DEBUG_INFO macro called by other handlers (0x2C peeks 0x20
+                // after dispatching its sub-expr). Treating real-bytecode 0x20 occurrences as
+                // EX_Return (which reads only 1 op + sub) was leaving 11+ bytes of debug
+                // payload to be re-dispatched as garbage tokens — visible in
+                // Ball_TA.IsGroundHit's trailing `Class'...'.default.GroundToleranceZ` orphan
+                // and `return HitNormal.Z > ToleranceZ` over-read past the function end.
+                { 0x20, typeof(DebugInfoToken) },
                 // 0x21: VERIFIED 1-sub-expr property-to-string cast (NOT DynArrayIterator).
                 // GNatives[0x21] = sub_7FF6CD2F5A40 reads ONE sub-expression then calls a
                 // property-export helper (sub_7FF6CD3192F0) with the property class pointer
