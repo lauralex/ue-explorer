@@ -243,7 +243,44 @@ The RocketLeague_Dumped_latest.exe IDB has been annotated with:
 
 **Important note about UStruct::SerializeExpr in v868 RL:**
 
-Stock UE3 has a single recursive `UStruct::SerializeExpr` that contains a giant switch over EExprToken. RL replaces this with a **table-driven** dispatch: `GNatives[byte](Object, Frame)`. Every GNatives handler that reads a sub-expression does its own `byte = *Code++; GNatives[byte](...)` inline — there is no single SerializeExpr loop function.
+The on-disk parser **DOES exist** as a global function: `UStruct::SerializeExpr` at
+`0x7FF6CD38C840` (renamed from `sub_7FF6CD38C840`). It contains the giant switch
+over EExprToken byte values per the UE3 stock pattern. The unique strings
+`"Bad expr token %02x"` (default case) and `"Bad array token %02x"` (inner switch
+for byte 0x19's sub-table) are present as UTF-16 in the binary — searchable in
+IDA after enabling UTF-16 string detection.
+
+This function has been verified to use v868 byte permutations by cross-checking
+several cases against the runtime GNatives table:
+- case 0x4C → 2 subs (LET) ✓
+- case 0x65 → LABEL_79 (UProperty pointer expansion) = LocalVariable ✓
+- case 0x55 → LABEL_79 = InstanceVariable ✓
+- case 0x29 → u16 + sub = JumpIfNot ✓
+- case 0x5B → 4-byte UStruct + sub + u16 + sub = StructDefaultParameter ✓
+- case 0x61 → 5 subs = New ✓
+- case 0x3E → leaf (terminator) = EndFunctionParms ✓
+
+**Critical finding for case 0x2C (EX_Conditional):**
+
+Stock UE3: `EX_Conditional = 0x45` with wire format `1 sub + u16 + 1 sub + u16 + 1 sub`.
+v868 RL: `EX_Conditional` rotated to **byte 0x2C** with the same wire format.
+Verified by reading `UStruct::SerializeExpr` case 44 disassembly at `0x7FF6CD38CC52`:
+```
+call qword ptr [rax]              ; recursive SerializeExpr (sub-1 = cond)
+call FArchive_SerializeWord       ; u16 SkipTrue
+call qword ptr [rax]              ; sub-2 = true-expr
+call FArchive_SerializeWord       ; u16 SkipFalse
+call qword ptr [rax]              ; sub-3 = false-expr
+```
+
+There is a runtime GNatives[0x2C] handler (`execStatementWrapper` at
+`0x7FF6CD308010`) which reads only `1 sub + 1 byte + optional 0x20 debug info`
+— a different shape. The reason for the divergence is unclear (possibly
+debug-mode instrumentation). For decompiler purposes, the **parse-time wire
+format from `UStruct::SerializeExpr` is authoritative** since that's what the
+cooker emits and what the package loader reads.
+
+Stock UE3 has a single recursive `UStruct::SerializeExpr` that contains a giant switch over EExprToken. RL keeps this AND adds GNatives table-driven runtime dispatch (`GNatives[byte](Object, Frame)`). Every GNatives handler that reads a sub-expression does its own `byte = *Code++; GNatives[byte](...)` inline.
 
 The `SerializeExpr_*` functions named above are HELPERS used to evaluate one expression and capture its typed result (FString, FName, UObject*, etc.). They follow the canonical pattern:
 ```

@@ -280,16 +280,21 @@ namespace UELib.Branch.UE3.RL
                 // 0x2A's u8 read suggests this is IntConstByte. Was wrongly mapped to
                 // VectorConst (which reads 12 bytes).
                 { 0x2B, typeof(IntConstByteToken) },
-                // 0x2C: VERIFIED 1-sub-expr wrapper + 1 trailing byte (NOT DebugInfo).
-                // GNatives[0x2C] = sub_7FF6CD308010 dispatches one sub-expression, then
-                // skips a single trailing byte, then optionally consumes 0x20 debug-info,
-                // and calls a log helper printing the script File. Wire format does not
-                // match EX_DebugInfo (which is a fixed 12-byte payload). Previous mapping
-                // happened to consume the right total when the inner sub-expr was 12 bytes,
-                // but silently swallowed the sub-expression's parse. Visible in
-                // Ball_TA.IsGroundHit's `ToleranceZ = ;` empty-RHS render — the ternary
-                // RHS was being eaten as DebugInfo's Version/Line/TextPos.
-                { 0x2C, typeof(StatementWrapperTokenRL) },
+                // 0x2C: VERIFIED EX_Conditional (3 sub-exprs + 2 u16 skip offsets).
+                // Stock UE3 had EX_Conditional at byte 0x45; v868 RL rotated it to 0x2C.
+                // Verified by reading UStruct::SerializeExpr (sub_7FF6CD38C840) case 44:
+                //   call qword ptr [rax]              ; recursive SerializeExpr (cond)
+                //   call FArchive_SerializeWord       ; u16 SkipTrue
+                //   call qword ptr [rax]              ; true-expr
+                //   call FArchive_SerializeWord       ; u16 SkipFalse
+                //   call qword ptr [rax]              ; false-expr
+                // The runtime GNatives[0x2C] handler at sub_7FF6CD308010 reads only
+                // "1 sub + 1 byte + optional 0x20" — a different shape — but the
+                // parse-time wire format from UStruct::SerializeExpr is authoritative
+                // for decompilation since the cooker emits the parse-time format.
+                // ConditionalToken (UELib/src/Core/Tokens/LetTokens.cs) already
+                // implements stock UE3's wire format and renders as "((cond) ? a : b)".
+                { 0x2C, typeof(ConditionalToken) },
                 // 0x2D: VERIFIED 3-sub-expr assert-shape (NOT EventUnsubscribe).
                 // GNatives[0x2D] = sub_7FF6CD2F06A0 reads u16 + byte + 3 sub-exprs and
                 // logs "Assertion failed, line %i" via the debugger predicate. New token
