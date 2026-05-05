@@ -41,7 +41,17 @@ namespace UELib.Branch.UE3.RL
                 // FunctionToken.DeserializeCall around its parm loop) and renders as
                 // EX_Return at top level / NothingToken inside a call.
                 { 0x00, typeof(ContextAwareReturnTokenRL) },
-                { 0x01, typeof(StateVariableToken) },
+                // 0x01: VERIFIED 1-sub-expression wrapper (parser case 0x01 → LABEL_70).
+                // UStruct::SerializeExpr (sub_7FF6CD38C840) groups 0x01 with 0x06 / 0x66
+                // (both BoolVariableToken), 0x52 (EatReturnValue), 0x5C (GotoLabel) — all
+                // 1-sub passthroughs. GNatives runtime handler at 0x7FF6CD2F0FB0 reads 2
+                // sub-opcodes (Let-shape) but the parser is authoritative for decompilation
+                // (per CLAUDE.md validation discipline; precedent: byte 0x2C ternary).
+                // Was StateVariableToken (8-byte FName read) — over-consumed and triggered
+                // the parse-recovery seek bug now fixed in ByteCodeDecompiler. Visible as
+                // the orphan `@NULL` token in Ball_TA.Explode at storage 521. Mapping to
+                // BoolVariableToken matches the parser grouping: read 1 sub, render the sub.
+                { 0x01, typeof(BoolVariableToken) },
                 { 0x02, typeof(IntConstToken) },
                 // 0x03: VERIFIED unmapped (binary handler = default error). Was wrongly
                 // StructCmpEqToken (which reads 8 bytes UObject* + 2 sub-exprs — way too much
