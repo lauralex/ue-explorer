@@ -866,6 +866,153 @@ namespace UELib.Core
             private List<ULabelEntry> _Labels;
             private List<(ULabelEntry entry, int refs)> _TempLabels;
 
+            /// <summary>
+            /// Snap forward CodeOffsets in every JumpToken/JumpIfNot/Case/Iterator
+            /// to the nearest sibling-token boundary. Recovers from the RL cooker
+            /// undercount where in-memory 4→8 expansions in the body were not
+            /// accounted for and the recorded u16 lands mid-token. Two effects:
+            ///   1. JumpToken auto-labels (J0xXX) line up with a token's Position
+            ///      so `DecompileLabelForToken` actually prints them.
+            ///   2. JumpIfNot's if-else detection (elseStartToken.Position ==
+            ///      CodeOffset && prevToken is JumpToken) starts firing for
+            ///      cooker-bugged shapes — was failing because CodeOffset landed
+            ///      one expansion short of the else-body start.
+            /// For JumpIfNot specifically, an additional snap-past-trailing-exit
+            /// step runs when the previous body sibling is non-exit and the
+            /// snapped sibling is exit-like — empirical pattern of cooker
+            /// undercount producing "long body stmt + short trailing return"
+            /// in functions like RegisterClient.
+            /// </summary>
+            private void FixupJumpCodeOffsets()
+            {
+                if (DeserializedTokens == null || DeserializedTokens.Count == 0) return;
+                if (_Labels == null) return;
+
+                // Identify sibling-boundary positions. A token starts a new
+                // sibling iff its Position is at-or-past the cumulative end of
+                // the prior sibling chain — sub-tokens of an earlier sibling
+                // never qualify because their Position is inside the prior end.
+                var siblingPositions = new SortedSet<int>();
+                var siblingByPos = new Dictionary<int, Token>();
+                int siblingEnd = 0;
+                foreach (var t in DeserializedTokens)
+                {
+                    if (t == null) continue;
+                    if (t.Position >= siblingEnd)
+                    {
+                        siblingPositions.Add(t.Position);
+                        siblingByPos[t.Position] = t;
+                        siblingEnd = t.Position + t.Size;
+                    }
+                }
+                // Function-end virtual boundary so a CodeOffset just past the
+                // last sibling (typical for a final `return`) can still snap.
+                siblingPositions.Add(siblingEnd);
+
+                foreach (var token in DeserializedTokens)
+                {
+                    if (token is not JumpToken jt) continue;
+                    if (jt.CodeOffset >= ushort.MaxValue) continue;       // 0xFFFF default-case sentinel
+                    if (jt.CodeOffset == 0) continue;                     // unset
+                    if (jt.CodeOffset <= jt.Position) continue;           // backward (loop back-edge)
+                    if (jt.CodeOffset < jt.Position + jt.Size) continue;  // Case A — handled in JumpIfNotToken.Decompile
+                    if (siblingPositions.Contains(jt.CodeOffset)) continue; // already aligned
+
+                    int snapped = -1;
+                    foreach (var b in siblingPositions)
+                    {
+                        if (b > jt.CodeOffset) { snapped = b; break; }
+                    }
+                    if (snapped == -1) continue;
+                    // Cooker undercount is a small number of bytes (one or a
+                    // few 4-byte expansions). Reject snaps over a long
+                    // distance to avoid corrupting unrelated jumps that
+                    // genuinely target a non-boundary position (rare, but
+                    // possible for e.g. malformed bytecode after parse drift).
+                    if (snapped - jt.CodeOffset > 16) continue;
+
+                    // For JumpIfNotToken: when CodeOffset lands just before a
+                    // single-statement exit immediately following a non-exit
+                    // body statement, the cooker's intent was to include the
+                    // exit in the if-body. This is the "long body stmt +
+                    // trailing return" pattern (RegisterClient) and the
+                    // "if-body terminated by goto for if-else" pattern
+                    // (HandleClientActionRequired). Snap one more sibling past.
+                    if (jt is JumpIfNotToken)
+                    {
+                        Token prevSibling = null;
+                        int curEnd = jt.Position + jt.Size;
+                        foreach (var t in DeserializedTokens)
+                        {
+                            if (t == null) continue;
+                            if (t.Position < curEnd) continue;
+                            if (t.Position >= snapped) break;
+                            prevSibling = t;
+                            curEnd = t.Position + t.Size;
+                        }
+
+                        siblingByPos.TryGetValue(snapped, out var tokenAtSnap);
+                        if (prevSibling != null
+                            && !IsBodyExitLikeToken(prevSibling)
+                            && tokenAtSnap != null
+                            && IsBodyExitLikeToken(tokenAtSnap))
+                        {
+                            int afterSnap = tokenAtSnap.Position + tokenAtSnap.Size;
+                            if (siblingPositions.Contains(afterSnap))
+                            {
+                                snapped = afterSnap;
+                            }
+                        }
+                    }
+
+                    ushort oldOffset = jt.CodeOffset;
+                    jt.CodeOffset = (ushort)snapped;
+
+                    // Update the corresponding auto-label entry. JumpToken adds
+                    // a J0xXX label at its CodeOffset in PostDeserialized; if
+                    // we changed the offset, the label needs to follow. Filter
+                    // by the J0x prefix so state-label entries (added by
+                    // LabelTableToken from the function's actual labels) are
+                    // left alone.
+                    for (int i = 0; i < _Labels.Count; i++)
+                    {
+                        if (_Labels[i].Position == oldOffset
+                            && _Labels[i].Name != null
+                            && _Labels[i].Name.StartsWith("J0x", StringComparison.Ordinal))
+                        {
+                            _Labels[i] = new ULabelEntry
+                            {
+                                Name = UDecompilingState.OffsetLabelName((ushort)snapped),
+                                Position = snapped
+                            };
+                            break;
+                        }
+                    }
+                }
+            }
+
+            private static bool IsBodyExitLikeToken(Token t)
+            {
+                if (t == null) return false;
+                var typeName = t.GetType().Name;
+                if (typeName == "ContextAwareReturnTokenRL"
+                    || typeName == "ReturnToken"
+                    || typeName == "ReturnNothingToken")
+                {
+                    return true;
+                }
+                // A bare JumpToken (not subclasses) with a forward jump past
+                // its own bytes is the if-body's terminating goto in an
+                // if-else compilation — should be considered part of the body
+                // for snap-past purposes.
+                if (t.GetType() == typeof(JumpToken))
+                {
+                    var jt = (JumpToken)t;
+                    return jt.CodeOffset > t.Position + t.Size;
+                }
+                return false;
+            }
+
             [ExprToken(ExprToken.LabelTable)]
             public class LabelTableToken : Token
             {

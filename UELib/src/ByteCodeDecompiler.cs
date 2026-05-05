@@ -259,6 +259,17 @@ namespace UELib.Core
                 {
                     _Container.MaybeDisposeBuffer();
                 }
+
+                // Post-deserialize fixup: snap forward CodeOffsets in
+                // JumpToken/JumpIfNot/Case/Iterator to nearest sibling token
+                // boundary. Recovers from RL cooker undercount where in-memory
+                // 4→8 expansions in the body were not accounted for, so the
+                // recorded u16 lands mid-token. Without this, JumpToken labels
+                // never print (no token has Position == raw CodeOffset) and
+                // JumpIfNot if-else detection fails (elseStartToken alignment
+                // breaks). Lives here, not per-token, because the full token
+                // list is needed to identify sibling boundaries.
+                FixupJumpCodeOffsets();
             }
 
             private void DeserializeDebugToken()
