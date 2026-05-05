@@ -80,7 +80,7 @@ namespace UELib.Branch.UE3.RL
                 // 0x08: empirically a 1-sub-token wrapper (best fit; EatReturnValue shape).
                 // Tied with InterfaceCast/DynamicCast/MetaClassCast/ObjectConst — all 1-sub
                 // shapes in baseline UE3. Picked EatReturnValue as the simplest leaf-of-leaf.
-                { 0x08, typeof(EatReturnValueToken) },
+                { 0x08, typeof(EatReturnValueTokenRL) },
                 // 0x09: VERIFIED comma-operator-style wrapper (NOT an assignment).
                 // GNatives[0x09] = sub_7FF6CD2F5930 evaluates sub-A for side-effects then
                 // evaluates sub-B and returns its value: equivalent to `(A, B)` where the
@@ -99,7 +99,12 @@ namespace UELib.Branch.UE3.RL
                 // 0x0B: VERIFIED IntConst (reads INT, NOT DynamicArrayElement).
                 // GNatives[0x0B] = sub_7FF6CD2F6DC0 reads 4-byte INT and writes to *a3.
                 { 0x0B, typeof(IntConstToken) },
-                { 0x0C, typeof(EventSubscribeToken) },
+                // 0x0C: VERIFIED LetBool-shape (dispatches 2 sub-opcodes).
+                // GNatives[0x0C] = sub_7FF6CD2F0AA0 clears the destination bool bit,
+                // then dispatches the RHS expression. Was EventSubscribeToken, which rendered
+                // boolean assignments like `bMessageReady = Array.Every(...)` as `+=`.
+                // Event subscribe/unsubscribe shapes live elsewhere (for example 0x48).
+                { 0x0C, typeof(LetBoolToken) },
                 // 0x0D: VERIFIED unmapped (binary handler = default error). Was wrongly
                 // DebugInfoToken (13-byte over-consume — silently swallowed adjacent tokens
                 // when this byte appeared in real bytecode).
@@ -129,7 +134,7 @@ namespace UELib.Branch.UE3.RL
                 // StateVariable based on linked-list-walk pattern, but OutParms is a more
                 // accurate match.
                 { 0x11, typeof(OutVariableToken) },
-                { 0x12, typeof(EatReturnValueToken) },
+                { 0x12, typeof(EatReturnValueTokenRL) },
                 { 0x13, typeof(NoObjectToken) },
                 { 0x14, typeof(DynamicArrayLengthToken) },
                 { 0x15, typeof(InterfaceContextToken) },
@@ -356,7 +361,7 @@ namespace UELib.Branch.UE3.RL
                 // then accesses dynarray-result globals + does a vtable call. Logs
                 // "Result given to DynArrayResult method". Conservative mapping —
                 // EatReturnValue (1-sub passthrough) until full semantics understood.
-                { 0x33, typeof(EatReturnValueToken) },
+                { 0x33, typeof(EatReturnValueTokenRL) },
                 // 0x34: VERIFIED unmapped (binary handler = default error). Was wrongly
                 // LetDelegateToken (2 sub-exprs + cleanup — over-consumed).
                 { 0x34, typeof(NothingToken) },
@@ -533,7 +538,7 @@ namespace UELib.Branch.UE3.RL
                 // slot. Same shape as 0x15 (sub_7FF6CD2F59D0 — also a 1-sub-discard wrapper).
                 // DynamicCast in baseline UE3 has wire format `1 byte + UClass* + 1 sub` —
                 // doesn't match. Mapping to EatReturnValue (1-sub passthrough).
-                { 0x52, typeof(EatReturnValueToken) },
+                { 0x52, typeof(EatReturnValueTokenRL) },
                 // 0x53: VERIFIED StructCmpEq/Ne (8-byte UStruct* + 2 sub-exprs + struct comparison).
                 // GNatives[0x53] = sub_7FF6CD2F6240 reads 8-byte UStruct*, allocates two struct
                 // buffers, dispatches sub-opcode A (writes to buf1), dispatches sub-opcode B
