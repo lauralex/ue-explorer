@@ -32,7 +32,7 @@ unmapped in RL and should never appear in valid bytecode.
 | Byte | Handler              | Wire format / shape                                  | Token mapping                            |
 |------|----------------------|------------------------------------------------------|------------------------------------------|
 | 0x00 | `sub_7FF6CD31ACB0`   | ERROR                                                | `ContextAwareReturnTokenRL` (RL emits this byte both as `EX_Return` at top level and as alignment padding inside variadic args; the token disambiguates by VariadicCallDepth + DeserializationDepth + peek). |
-| 0x01 | `sub_7FF6CD2F0FB0`   | 2 sub-exprs, returns sub-2 (state-variable lookup)   | `StateVariableToken` |
+| 0x01 | `sub_7FF6CD2F0FB0`   | runtime: 2 sub-exprs (Let-shape); parser case (LABEL_70): 1 sub. Parser is authoritative for decompile (cooker emits parse-time format). | `BoolVariableToken` (1-sub passthrough; same parser group as 0x06/0x66) |
 | 0x02 | `sub_7FF6CD31ACB0`   | ERROR                                                | `IntConstToken` (legacy, harmless if absent) |
 | 0x03 | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x04 | `sub_7FF6CD31ACB0`   | ERROR                                                | `EndOfScriptToken` |
@@ -58,7 +58,7 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x18 | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x19 | `sub_7FF6CD2F1750`   | 1 byte + dispatch into sub-table at `0x7FF6CF2B2D80` (dynarray methods) | `ExtendedNativeFunctionToken` |
 | 0x1A | `sub_7FF6CD2F70C0`   | 8-byte UClass* + 1 sub-expr + class-flag check (DynamicCast) | `DynamicCastToken` |
-| 0x1B | `sub_7FF6CD2F6AE0`   | 2 sub-exprs + 1-byte skip + optional 0x20 (alias 0x54) | `MetaClassCastToken` (wire format mismatch — TBD) |
+| 0x1B | `sub_7FF6CD2F6AE0`   | runtime: 2 subs + 1-byte skip + optional 0x20 debug. Parser case (with 0x05/0x16/0x54): variadic body until 0x3E + optional debug. | `DynamicArrayElementToken` (matches parser grouping with 0x05/0x16) |
 | 0x1C | `sub_7FF6CD2F7030`   | write 0 (4-byte) (alias 0x27)                        | `IntZeroToken` |
 | 0x1D | `sub_7FF6CD21D420`   | empty stub (alias 0x2E; different module)            | `NothingToken` |
 | 0x1E | `sub_7FF6CD2ED550`   | 2 sub-exprs + bounds-check (ArrayElement)            | `ArrayElementToken` |
@@ -86,7 +86,7 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x34 | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x35 | `sub_7FF6CD31ACB0` (TBD verify) | ERROR? (was NameConst by guess)            | `NameConstToken` (legacy) |
 | 0x36 | `sub_7FF6CD2F7250`   | 8-byte UProperty* + sub + zero-result (property setter discard) | `PropertySetterDiscardTokenRL` |
-| 0x37 | `sub_7FF6CD2F5810`   | 2 sub + u16 + conditional variadic body (term 0x3E)  | `FloatConstToken` (legacy — under-reads if appears) |
+| 0x37 | `sub_7FF6CD2F5810`   | 2 subs + u16 + variadic body (term 0x3E) + optional debug. Runtime gates variadic dispatch on receiver non-null (null-conditional call). | `NullConditionalCallTokenRL` (defensive — not yet observed) |
 | 0x38 | `sub_7FF6CD308710`   | sub + 2 bytes + UField + type + sub (ClassContext)   | `ClassContextToken` |
 | 0x39 | `sub_7FF6CD2F6FA0`   | 8-byte qword (alias 0x3B, 0x43, 0x5A; NameConst-shape) | `NameConstToken` |
 | 0x3A | `sub_7FF6CD2F7040`   | alias 0x2F (write 1, 4-byte)                         | `TrueToken` |
@@ -115,7 +115,7 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x51 | `sub_7FF6CD2F6EA0`   | UTF-16 until null word (UnicodeStringConst)          | `UnicodeStringConstToken` |
 | 0x52 | `sub_7FF6CD2ED450`   | 1 sub-expr + write 0 (passthrough)                   | `EatReturnValueToken` |
 | 0x53 | `sub_7FF6CD2F6240`   | UStruct + 2 sub + struct-cmp (StructCmpEq)           | `StructCmpEqToken` |
-| 0x54 | `sub_7FF6CD2F6AE0`   | alias 0x1B (2 sub + 1 byte)                          | `EatReturnValueToken` |
+| 0x54 | `sub_7FF6CD2F6AE0`   | alias of 0x1B; same parser case as 0x05/0x16 (variadic body until 0x3E) | `DynamicArrayElementToken` (mirrors 0x1B/0x16) |
 | 0x55 | `sub_7FF6CD2ED270`   | 8-byte UProperty* + this-relative addr (InstanceVariable) | `InstanceVariableToken` |
 | 0x56 | `sub_7FF6CD2F5B00`   | 8-byte FName + state-fn-call log                     | `NameConstToken` |
 | 0x57 | `sub_7FF6CD2F0390`   | 9 bytes (UField + type) + sub + case loop (Switch)   | `SwitchToken` |
