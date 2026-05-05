@@ -1,3 +1,4 @@
+using System;
 using UELib.Core;
 
 namespace UELib.Branch.UE3.RL.Tokens;
@@ -32,7 +33,28 @@ public class StructDefaultParameterTokenRL : UStruct.UByteCodeDecompiler.Token
 
     public override void Deserialize(IUnrealStream stream)
     {
-        StructRef = stream.ReadObject<UStruct>();
+        // Defensive lookup: cooked RL packages can carry UStruct indices that resolve
+        // to imports out-of-range or to non-UStruct objects (NTL drift / stale import
+        // tables). Without try/catch, ReadObject throws BEFORE AlignObjectSize runs —
+        // ScriptPosition stays uncompensated for the 4→8 expansion, the per-token
+        // catch in ByteCodeDecompiler resyncs to the buffer cursor, and the outer
+        // parse abandons the rest of THIS token's body (LHS sub + u16 + RHS sub),
+        // leaving them as orphan top-level tokens. Visible in
+        // Car_TA.GetPreviewTeamIndex as `ControllerRef = PlayerController_TA(Controller);
+        // return GameEvent.LocalPlayers[0];` where the fallback became a sibling
+        // statement of the assignment instead of being wrapped in `?? GameEvent.LocalPlayers[0]`.
+        try
+        {
+            StructRef = stream.ReadObject<UStruct>();
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            StructRef = null;
+        }
+        catch (InvalidCastException)
+        {
+            StructRef = null;
+        }
         Decompiler.AlignObjectSize();
 
         DeserializeNext();
