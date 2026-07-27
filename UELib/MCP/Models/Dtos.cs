@@ -62,6 +62,30 @@ public sealed record FuncSummaryDto(
     int param_count,
     int script_size);
 
+public sealed record FunctionEntryDto(
+    string name,
+    string path,
+    string class_path,
+    string? state_name,
+    ushort native_index,
+    string flags,
+    int param_count,
+    int script_size);
+
+public sealed record FunctionSourceMatchDto(
+    string name,
+    string path,
+    string class_path,
+    string flags,
+    string snippet);
+
+public sealed record FunctionSourceSearchDto(
+    int scanned,
+    int matched,
+    int errors,
+    bool truncated,
+    IReadOnlyList<FunctionSourceMatchDto> matches);
+
 public sealed record ConstInfoDto(string name, string? value);
 
 public sealed record EnumInfoDto(string name, IReadOnlyList<string> values);

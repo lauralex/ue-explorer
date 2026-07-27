@@ -8,10 +8,16 @@ public class FinalFunctionTokenRL : UStruct.UByteCodeDecompiler.FinalFunctionTok
     // Map of function names and respective token
     private static readonly Dictionary<string, Type> FunctionTokenMap = new()
     {
-        // Add RL-specific function tokens here
-        // Example:
-        // { "RL_SpecificFunction", typeof(RL_SpecificFunctionToken) },
         { "AllControllers", typeof(AllControllersJumpTokenRL) },
+        { "AllAttachments", typeof(AllControllersJumpTokenRL) },
+        { "AllNavigationPoints", typeof(AllControllersJumpTokenRL) },
+        { "AllObjects", typeof(AllControllersJumpTokenRL) },
+        { "AllObjectsOfType", typeof(AllControllersJumpTokenRL) },
+        { "AllProductsBySlot", typeof(AllControllersJumpTokenRL) },
+        { "AllSequenceObjects", typeof(AllControllersJumpTokenRL) },
+        { "AllSkelControlsNamed", typeof(AllControllersJumpTokenRL) },
+        { "AllValues", typeof(AllControllersJumpTokenRL) },
+        { "LocalPlayerControllers", typeof(AllControllersJumpTokenRL) },
     };
 
     public override void Deserialize(IUnrealStream stream)
@@ -77,6 +83,19 @@ public class FinalFunctionTokenRL : UStruct.UByteCodeDecompiler.FinalFunctionTok
             return DecompileCall($"/* unresolved final function: {Function.Name} */");
         }
 
+        if (TryResolveOperatorSymbol(Function, out var operatorEntry))
+        {
+            string operatorOutput = operatorEntry.Type switch
+            {
+                FunctionType.PreOperator => DecompilePreOperator(operatorEntry.Symbol),
+                FunctionType.PostOperator => DecompilePostOperator(operatorEntry.Symbol),
+                FunctionType.Operator => DecompileOperator(operatorEntry.Symbol),
+                _ => DecompileCall(Function.Name),
+            };
+            Decompiler.MarkSemicolon();
+            return operatorOutput;
+        }
+
         // Wrap base.Decompile in narrow NRE/AOOR catch — inside its body, the super-call branch
         // dereferences `Decompiler._Container.Outer` (cast to UField) which can be null in cooked
         // packages even when our explicit Function.Outer guard above passes; the AOOR path comes
@@ -100,10 +119,38 @@ public class FinalFunctionTokenRL : UStruct.UByteCodeDecompiler.FinalFunctionTok
             if (tokenType == typeof(AllControllersJumpTokenRL))
             {
                 DecompileNext();
-                return $"{output} ?";
+                return $"foreach {output}";
             }
         }
 
         return output;
+    }
+
+    private static bool TryResolveOperatorSymbol(
+        UFunction function,
+        out StandardOperatorSymbols.OperatorEntry entry)
+    {
+        entry = default;
+
+        if (function.NativeToken != 0 && StandardOperatorSymbols.Map.TryGetValue(function.NativeToken, out entry))
+        {
+            return true;
+        }
+
+        if (!StandardOperatorSymbols.TryResolveByName(function.Name, out entry))
+        {
+            return false;
+        }
+
+        if (function.IsPre())
+        {
+            entry = new StandardOperatorSymbols.OperatorEntry(entry.Symbol, FunctionType.PreOperator, entry.Precedence);
+        }
+        else if (function.IsPost())
+        {
+            entry = new StandardOperatorSymbols.OperatorEntry(entry.Symbol, FunctionType.PostOperator, entry.Precedence);
+        }
+
+        return true;
     }
 }

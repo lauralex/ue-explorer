@@ -15,7 +15,16 @@ public class DynamicArrayMapTokenRL : UStruct.UByteCodeDecompiler.DynamicArrayMe
         // Param 1
         DeserializeNext();
 
-        stream.ReadObject();
+        try
+        {
+            stream.ReadObject();
+        }
+        catch (System.ArgumentOutOfRangeException)
+        {
+        }
+        catch (System.InvalidCastException)
+        {
+        }
         Decompiler.AlignObjectSize();
 
         if (stream.Version >= (uint)PackageObjectLegacyVersion.EndTokenAppendedToArrayTokenIntrinsics)
@@ -32,6 +41,17 @@ public class DynamicArrayMapTokenRL : UStruct.UByteCodeDecompiler.DynamicArrayMe
 
     public override string Decompile()
     {
-        return $"{DecompileNext()}.Map({DecompileNext()}, {DecompileNext()+DecompileNext()})";
+        string context = DecompileNext();
+        string mapper = DecompileNext();
+
+        if (Package.Version >= (uint)PackageObjectLegacyVersion.EndTokenAppendedToArrayTokenIntrinsics)
+        {
+            AssertSkipCurrentToken<UStruct.UByteCodeDecompiler.EndFunctionParmsToken>();
+        }
+
+        string output = DecompileNext();
+        return string.IsNullOrEmpty(output)
+            ? $"{context}.Map({mapper})"
+            : $"{context}.Map({mapper}, out {output})";
     }
 }

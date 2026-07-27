@@ -23,7 +23,16 @@ public class DynamicArrayConcatTokenRL : UStruct.UByteCodeDecompiler.DynamicArra
         Decompiler.AlignSize(sizeof(ushort));
 
         // Read Object
-        stream.ReadObject();
+        try
+        {
+            stream.ReadObject();
+        }
+        catch (System.ArgumentOutOfRangeException)
+        {
+        }
+        catch (System.InvalidCastException)
+        {
+        }
         Decompiler.AlignObjectSize();
 
         if (stream.Version >= (uint)PackageObjectLegacyVersion.EndTokenAppendedToArrayTokenIntrinsics)

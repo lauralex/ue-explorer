@@ -7,25 +7,21 @@ public class FindFirstWithDelegate : UStruct.UByteCodeDecompiler.Token
     {
         DeserializeNext();
 
-        stream.ReadByte();
-        stream.ReadByte();
-        Decompiler.AlignSize(sizeof(byte));
-        Decompiler.AlignSize(sizeof(byte));
+        stream.Skip(2);
+        Decompiler.AlignSize(sizeof(ushort));
 
         DeserializeNext();
+        DeserializeNext();
 
-        stream.ReadByte();
-        Decompiler.AlignSize(sizeof(byte));
+        DeserializeDebugToken();
     }
 
     public override string Decompile()
     {
-        string firstExpression = DecompileNext();
+        string array = DecompileNext();
+        string predicate = DecompileNext();
+        AssertSkipCurrentToken<UStruct.UByteCodeDecompiler.EndFunctionParmsToken>();
 
-        return $"" +
-               $"foreach {firstExpression}(Idx)" +
-               $"{{" +
-               $"   if ({DecompileNext()}({firstExpression}(Idx))) break; // ItemValue" +
-               $"}}";
+        return $"{array}.First({predicate})";
     }
 }

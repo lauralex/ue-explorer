@@ -9,6 +9,135 @@
 > on-disk parser CAN diverge for the same byte; for decompilation, the parser
 > at `sub_7FF6CD38C840` (`UStruct__SerializeExpr` in the IDB) is authoritative.
 
+> **STATUS UPDATE (2026-07-23 — June 25 generation-7 rotation)**
+>
+> The June 25 packages still report version/licensee `868/32`, but their
+> opcode permutation changed. They are identified by generation count 7
+> (the May fixtures have 5). The current binary uses GNatives table
+> `0x7FF6B86339A0`, error handler `0x7FF6B669C430`, and parser
+> `sub_7FF6B670E540`.
+>
+> `EngineBranchRL` now selects `BuildGeneration7TokenMap()` for these packages.
+> The high-value parser anchors were rechecked in the current IDB: variadic
+> terminator `0x16`, conditional `0x45`, dynamic-array dispatcher `0x57`, and
+> debug info `0x41`. The complete map, package GUIDs, binary anchors, and
+> validation sample are recorded in
+> `snapshots/GNATIVES_SNAPSHOT_2026-06-25_gen7.md`.
+
+> **STATUS UPDATE (2026-05-12 — latest live package pass)**
+>
+> The May 12 `RocketLeague_Dumped_latest.exe` primary `GNatives` table is at
+> `0x7FF76A9CA580`. Primary handler addresses match the v868 snapshot modulo
+> ASLR/base delta `+0x9B720000`; the opcode permutation did **not** rotate.
+>
+> New packages exposed stale delegate semantics rather than a rotated table:
+> `Ball_TA.Explode` and `Car_TA.HandleTeamChanged` emitted orphan delegate lines.
+> IDA cross-check:
+>
+> - `0x01` runtime handler (`sub_7FF768A10FB0`) dispatches two sub-expressions
+>   and appends/marks a delegate binding. It now maps to `EventSubscribeToken`.
+>   `UStruct__SerializeExpr` still groups `0x01` as a 1-sub parser case, so this
+>   is a deliberate runtime-semantics render fix over the parser's walk shape.
+> - `0x17` runtime handler (`sub_7FF768A11580`) dispatches two sub-expressions
+>   and clears a matching delegate-list entry. It now maps to
+>   `EventUnsubscribeToken`.
+> - `0x48` is not delegate subscribe. Runtime handler (`sub_7FF768A2D7C0`)
+>   reads `u16 + FName-like qword + byte` and conditionally jumps. It now uses
+>   `FilterEditorOnlyTokenRL` so any occurrence consumes the correct bytes.
+>
+> The same ProjectX sweep exposed primitive-cast subtype `0x64` in
+> `PsyNetServiceProvider_X.ExecuteServiceMessage`. This is **not** primary
+> opcode `0x64`; it is the subtype byte after `EX_PrimitiveCast` (`0x6B`).
+> `funcs_7FF768A1735D[0x64]` points to `sub_7FF768A2F400`, which dispatches one
+> sub-expression to `FString` and calls `wcstoui64`, so it renders as
+> `qword(<expr>)`. Adjacent verified qword cast subtypes now render too:
+> `0x61` qword→int, `0x62` int→qword, `0x63` qword→string,
+> `0x66` string→UniqueNetId, `0x68` qword→float, and `0x69` float→qword.
+>
+> The EOS helper functions also showed terminal bytecode pairs
+> `0x00 0x1D 0x00 0x1D 0x10`: an explicit `return;` followed by the function-end
+> safety return. `ContextAwareReturnTokenRL` now suppresses only the adjacent
+> duplicate terminal `return;` while keeping the real statement.
+>
+> `OnlineGameRegions_X.OnAllRegionsPinged` then exposed phantom tokens after
+> the real on-disk script end (`ScriptSize=114`, `ByteScriptSize=142`). One
+> phantom token looked like primitive-cast subtype `0x1B`, but IDA shows
+> `funcs_7FF768A1735D[0x1B]` points at the default error handler, so this was
+> not a real cast. `ByteCodeDecompiler.Deserialize` now trims tokens whose
+> storage offset starts beyond `UStruct.ScriptSize`.
+>
+> Later in the same pass, broad TAGame/ProjectX/EOS scans found stale snapshot
+> claims and missing sub-table handlers:
+>
+> - Primary `0x13` is **not** NoObject in the current parser/runtime shape. The
+>   May 12 handler (`sub_7FF768A0D3E0`) reads state-frame/property storage and
+>   now maps to `StateVariableToken`.
+> - Primary `0x33` is a 2-sub-expression dynamic-array result wrapper
+>   (`sub_7FF768A11770`) and now maps to `DynArrayResultTokenRL`, not
+>   `EatReturnValueToken`.
+> - 0x19 dynarray subcodes `0x02`, `0x09`, `0x0E`, `0x0F`, `0x20`, `0x23`,
+>   `0x27`, `0x2A`, `0x2E`, `0x2F`, `0x32`, `0x33`, `0x34`, and `0x35` were
+>   added to stop `__NFUN_50xx__` ghost natives in current TAGame/ProjectX
+>   bytecode. Subcode `0x24` (`FindFirstWithDelegate`) was re-rendered as an
+>   expression (`Array.First(delegate)`) after re-checking handler
+>   `sub_7FF768A12D20`.
+> - `0x71` native actor iterators (e.g. `ChildActors`, verified at
+>   `sub_7FF768F62090`) and final-function iterators (`AllControllers`,
+>   `AllAttachments`, `AllSequenceObjects`, `AllProductsBySlot`,
+>   `LocalPlayerControllers`, etc.) consume a post-call `u16` foreach end
+>   offset and now render real `foreach` blocks.
+> - JumpIfNot recovery now also handles aligned offsets that land on the return
+>   token (or the one-byte padding after it), not only mid-token offsets. This
+>   fixes the classic empty `if {}` followed by orphan `return` pattern in
+>   `Car_TA.OnTeleport`, `GameEvent_KnockOut_TA.GetMVP`, and
+>   `StatFactory_TA.GiveScore`.
+>
+> Validation on the May 12 decrypted fixtures:
+> `TAGame` full scan `16985 ok / 0 fail / 0 throw`; `ProjectX` full scan
+> `4132 ok / 0 fail / 0 throw`; `OnlineSubsystemEOS` full scan
+> `549 ok / 0 fail / 0 throw`; sentinel Engine/TAGame/ProjectX/EOS checks pass.
+
+> **STATUS UPDATE (2026-05-09 — 0x12 parser-shaped token)**
+>
+> `FreeplayCommands_TA.ActivateFreeplayCommand` exposed a real parse desync:
+> byte `0x12` was still mapped to `EatReturnValueTokenRL` even though the current
+> IDB shows `UStruct__SerializeExpr` case `0x12` as:
+>
+> `variadic body until 0x3E` → optional debug info → trailing sub-expression.
+>
+> Runtime handler `GNatives[0x12]` / `sub_7FF6CD2F5740` matches that sequence:
+> loop until byte `0x3E`, consume optional byte `0x20`, then dispatch one final
+> expression. `VariadicReturnValueTokenRL` now implements this shape and bumps
+> `VariadicCallDepth` while reading the variadic body so inner `0x00` bytes stay
+> padding instead of becoming bogus `return` statements.
+>
+> The same pass fixed byte `0x07`: `UStruct__SerializeExpr` groups it with
+> `0x1A`/`0x36` as `UField/UObject ref + 1 sub-expression`, and runtime handler
+> `sub_7FF6CD2F7360` tail-calls a helper that skips 8 bytes, dispatches one
+> sub-expression, then zeroes the result slot. Mapping it to `ReturnNothingToken`
+> erased operands inside comparison/final-call argument lists. It now uses
+> `FieldWrappedExpressionTokenRL`, which consumes the reference and renders the
+> wrapped expression.
+>
+> A follow-up check of `GameInfo_X.PreLogin` fixed byte `0x15`: the previous
+> `InterfaceContextToken` label was a bad semantic guess. IDA disassembly of
+> `sub_7FF6CD2F59D0` shows it dispatches one sub-expression into a temporary
+> `FString`, writes `ArrayNum - 1` to the result, then frees the buffer. It now
+> maps to `StringLengthTokenRL`, restoring patterns like
+> `ErrorMessage.Length > 0`.
+>
+> Final/native operator rendering also now resolves stripped operator-style
+> names (`NotEqual_InterfaceInterface`, `Greater_StrStr`, etc.) back to symbols
+> when the cooked `FriendlyName`/native index is missing or unhelpful.
+>
+> `OnlineGameReservations_X.AllowPlayerLogin` also exposed byte `0x3B` as a
+> parser-side FName leaf, not an object const. `UStruct__SerializeExpr` case
+> `0x3B` calls the FName serializer and advances 8 bytes. Mapping it to
+> `ObjectConstToken` consumed only the object-index half of the storage payload,
+> leaving four `0x00` orphan tokens and rendering `Players.Find(...)` /
+> `LogInternal(..., 'Reservations')` with bogus property-object literals.
+> It now maps to `NameConstToken`.
+
 > **STATUS UPDATE (2026-05-04 evening — comprehensive RE pass complete)**
 >
 > Primary opcode map is comprehensively verified against the binary. The

@@ -532,6 +532,14 @@ namespace UELib.Core
                         }
                     }
 
+                    if (NativeItem.Type != FunctionType.Function
+                        && UELib.Branch.UE3.RL.StandardOperatorSymbols.TryResolveByName(displayName, out var namedEntry))
+                    {
+                        displayName = namedEntry.Symbol;
+                        NativeItem.Type = namedEntry.Type;
+                        NativeItem.OperPrecedence = namedEntry.Precedence;
+                    }
+
                     string output;
                     switch (NativeItem.Type)
                     {

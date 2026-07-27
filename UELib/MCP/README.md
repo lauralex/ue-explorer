@@ -10,7 +10,7 @@ the same data the WinForms GUI shows — package summary, name/import/export
 tables, classes, functions, properties, decompiled UnrealScript, raw
 bytecode tokens — but over the MCP stdio protocol instead of clicks.
 
-## Tools (16)
+## Tools (18)
 
 ### Lifecycle
 
@@ -37,6 +37,7 @@ bytecode tokens — but over the MCP stdio protocol instead of clicks.
 | `find_object(handle, group_path)` | Lookup by `'Package.Outer.Name'`. |
 | `get_class_info(handle, class_name)` | Super, within, properties, functions, states, structs, consts, enums. |
 | `get_function_info(handle, class_path, function_name)` | Signature, flags, native index, params, return type. |
+| `list_functions(handle, offset?, limit?, network?, name_filter?)` | Paginated function inventory; filter by `server`, `client`, `net`, or `any`. |
 | `search_objects(handle, query, max_results=50)` | Case-insensitive substring search. |
 
 ### Decompilation
@@ -46,6 +47,7 @@ bytecode tokens — but over the MCP stdio protocol instead of clicks.
 | `decompile_object(handle, group_path)` | Generic `IUnrealDecompilable.Decompile()`. |
 | `decompile_class(handle, class_name)` | Full class source. |
 | `decompile_function(handle, class_path, function_name)` | Single function. |
+| `search_function_source(handle, query, ...)` | Search decompiled function bodies for call sites and field uses. |
 | `disassemble_function(handle, class_path, function_name)` | Per-token bytecode dump (offset, opcode byte, .NET type, decompiled text). |
 
 Decompile/disassemble calls never throw on a token-coverage gap — the

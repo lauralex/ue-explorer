@@ -103,6 +103,98 @@ public sealed class DecompilerTools(PackageSessionManager sessions)
         }, ct);
     }
 
+    [McpServerTool(Name = "search_function_source", UseStructuredContent = true,
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Search decompiled source across every UFunction in a loaded package. " +
+                 "This finds call sites and field uses that object-name search cannot see. The query and optional " +
+                 "class/name filters are case-insensitive literal substrings. Results include one bounded context " +
+                 "snippet per matching function; malformed functions are counted and skipped.")]
+    public Task<FunctionSourceSearchDto> SearchFunctionSource(
+        [Description("Handle returned by load_package.")] string handle,
+        [MinLength(1), Description("Case-insensitive literal substring to find in decompiled function source.")] string query,
+        [Range(1, 500), Description("Maximum matching functions to return (1..500). Default 100.")] int max_results = 100,
+        [Range(1, 100_000), Description("Maximum functions to decompile and scan (1..100000). Default 25000.")] int max_functions = 25_000,
+        [Description("Optional case-insensitive substring filter applied to the owning class path.")] string? class_filter = null,
+        [Description("Optional case-insensitive substring filter applied to the function name.")] string? name_filter = null,
+        CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return sessions.RunAsync(() =>
+        {
+            var pkg = sessions.Get(handle).Package;
+            PackageTools.EnsureInitialized(pkg);
+
+            if (string.IsNullOrEmpty(query))
+            {
+                throw McpErrors.InvalidParam("query must not be empty.");
+            }
+
+            max_results = Math.Clamp(max_results, 1, 500);
+            max_functions = Math.Clamp(max_functions, 1, 100_000);
+
+            IEnumerable<UFunction> source = pkg.Objects
+                .OfType<UFunction>()
+                .OrderBy(f => f.GetReferencePath(), StringComparer.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrEmpty(name_filter))
+            {
+                source = source.Where(f =>
+                    f.Name.ToString().Contains(name_filter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrEmpty(class_filter))
+            {
+                source = source.Where(f =>
+                    GetOwningClassPath(f).Contains(class_filter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            int scanned = 0;
+            int errors = 0;
+            var matches = new List<FunctionSourceMatchDto>();
+            using var enumerator = source.GetEnumerator();
+
+            while (scanned < max_functions && matches.Count < max_results && enumerator.MoveNext())
+            {
+                ct.ThrowIfCancellationRequested();
+                UFunction fn = enumerator.Current;
+                ++scanned;
+
+                string decompiled;
+                try
+                {
+                    decompiled = fn.Decompile() ?? string.Empty;
+                }
+                catch
+                {
+                    ++errors;
+                    continue;
+                }
+
+                int matchIndex = decompiled.IndexOf(query, StringComparison.OrdinalIgnoreCase);
+                if (matchIndex < 0)
+                {
+                    continue;
+                }
+
+                matches.Add(new FunctionSourceMatchDto(
+                    name: fn.Name.ToString(),
+                    path: fn.GetReferencePath(),
+                    class_path: GetOwningClassPath(fn),
+                    flags: FlagsFormat.Format(fn.FunctionFlags),
+                    snippet: MakeSnippet(decompiled, matchIndex, query.Length)));
+            }
+
+            bool truncated = matches.Count >= max_results
+                             || (scanned >= max_functions && enumerator.MoveNext());
+            return new FunctionSourceSearchDto(
+                scanned,
+                matches.Count,
+                errors,
+                truncated,
+                matches);
+        }, ct);
+    }
+
     [McpServerTool(Name = "disassemble_function", UseStructuredContent = true,
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Tokenize a function's bytecode without producing UnrealScript. Returns each token's stream offset, " +
@@ -198,5 +290,30 @@ public sealed class DecompilerTools(PackageSessionManager sessions)
         if (requested <= 0) return DefaultMaxChars;
         if (requested > MaxMaxChars) return MaxMaxChars;
         return requested;
+    }
+
+    private static string GetOwningClassPath(UFunction fn)
+    {
+        UObject? owner = fn.Outer;
+        while (owner is not null and not UClass)
+        {
+            owner = owner.Outer;
+        }
+
+        return owner?.GetReferencePath() ?? string.Empty;
+    }
+
+    private static string MakeSnippet(string source, int matchIndex, int matchLength)
+    {
+        const int context = 180;
+        int start = Math.Max(0, matchIndex - context);
+        int end = Math.Min(source.Length, matchIndex + matchLength + context);
+        string snippet = source[start..end]
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
+        return (start > 0 ? "…" : string.Empty)
+               + snippet
+               + (end < source.Length ? "…" : string.Empty);
     }
 }

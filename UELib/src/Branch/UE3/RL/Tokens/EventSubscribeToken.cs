@@ -24,6 +24,19 @@ public class EventSubscribeToken : UStruct.UByteCodeDecompiler.Token
     public override string Decompile()
     {
         Decompiler.MarkSemicolon();
-        return $"{DecompileNext()} += {DecompileNext()}";
+        string left = DecompileNext();
+        string right = DecompileNext();
+
+        if (string.IsNullOrWhiteSpace(left))
+        {
+            return right;
+        }
+
+        if (string.IsNullOrWhiteSpace(right))
+        {
+            return left;
+        }
+
+        return $"{left} += {right}";
     }
 }

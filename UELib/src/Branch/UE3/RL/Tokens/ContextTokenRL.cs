@@ -79,7 +79,22 @@ public class ContextTokenRL : UStruct.UByteCodeDecompiler.ContextToken
     public override string Decompile()
     {
         string receiver = DecompileNext();
-        string member = DecompileNext();
+        string member = string.Empty;
+        if (Decompiler.CurrentTokenIndex + 1 < Decompiler.DeserializedTokens.Count)
+        {
+            try
+            {
+                member = NextToken().Decompile();
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                member = string.Empty;
+            }
+            catch (NullReferenceException)
+            {
+                member = string.Empty;
+            }
+        }
 
         // Property fallback when the import lookup failed during Deserialize.
         // If we have the resolved Property we'd normally use its name, but
@@ -96,6 +111,12 @@ public class ContextTokenRL : UStruct.UByteCodeDecompiler.ContextToken
             {
                 member = "/* unresolved member */";
             }
+        }
+
+        const string foreachPrefix = "foreach ";
+        if (member.StartsWith(foreachPrefix, StringComparison.Ordinal))
+        {
+            return $"{foreachPrefix}{receiver}.{member.Substring(foreachPrefix.Length)}";
         }
 
         return $"{receiver}.{member}";

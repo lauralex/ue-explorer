@@ -999,6 +999,53 @@ namespace UELib.Core
                     if (jt.CodeOffset == 0) continue;                     // unset
                     if (jt.CodeOffset <= jt.Position) continue;           // backward (loop back-edge)
                     if (jt.CodeOffset < jt.Position + jt.Size) continue;  // Case A — handled in JumpIfNotToken.Decompile
+
+                    // RL's cooked bytecode sometimes stores JumpIfNot's end
+                    // offset as the first byte of a trailing return statement
+                    // whose expression is the actual one-line if-body. Because
+                    // that offset is already token-aligned, the generic
+                    // snap-to-next-boundary path below would otherwise leave an
+                    // empty `if {}` followed by an orphan `return`.
+                    if (jt is JumpIfNotToken
+                        && jt.CodeOffset == jt.Position + jt.Size
+                        && siblingByPos.TryGetValue(jt.CodeOffset, out var alignedToken)
+                        && IsBodyExitLikeToken(alignedToken))
+                    {
+                        int afterAligned = alignedToken.Position + alignedToken.Size;
+                        if (siblingPositions.Contains(afterAligned)
+                            && afterAligned - jt.CodeOffset <= 128)
+                        {
+                            jt.CodeOffset = (ushort)SkipSingleBytePaddingBoundary(afterAligned, siblingByPos);
+                        }
+                        continue;
+                    }
+
+                    if (jt is JumpIfNotToken
+                        && siblingByPos.TryGetValue(jt.CodeOffset, out var alignedExitToken)
+                        && IsBodyExitLikeToken(alignedExitToken)
+                        && TryGetPreviousSibling(jt.Position + jt.Size, jt.CodeOffset, out var previousBodySibling)
+                        && !IsBodyExitLikeToken(previousBodySibling))
+                    {
+                        jt.CodeOffset = (ushort)SkipSingleBytePaddingBoundary(
+                            alignedExitToken.Position + alignedExitToken.Size,
+                            siblingByPos);
+                        continue;
+                    }
+
+                    if (jt is JumpIfNotToken
+                        && siblingByPos.TryGetValue(jt.CodeOffset, out var tokenAtAlignedOffset)
+                        && tokenAtAlignedOffset is NothingToken
+                        && TryGetPreviousSibling(jt.Position + jt.Size, jt.CodeOffset, out var previousSibling)
+                        && IsBodyExitLikeToken(previousSibling))
+                    {
+                        int afterPadding = tokenAtAlignedOffset.Position + tokenAtAlignedOffset.Size;
+                        if (afterPadding - jt.CodeOffset <= 4)
+                        {
+                            jt.CodeOffset = (ushort)afterPadding;
+                        }
+                        continue;
+                    }
+
                     if (siblingPositions.Contains(jt.CodeOffset)) continue; // already aligned
 
                     int snapped = -1;
@@ -1072,6 +1119,36 @@ namespace UELib.Core
                         }
                     }
                 }
+            }
+
+            private static int SkipSingleBytePaddingBoundary(int position, Dictionary<int, Token> siblingByPos)
+            {
+                if (siblingByPos.TryGetValue(position, out var token)
+                    && token is NothingToken
+                    && token.Size <= 1)
+                {
+                    return token.Position + token.Size;
+                }
+
+                return position;
+            }
+
+            private bool TryGetPreviousSibling(int startPosition, int endPosition, out Token previousSibling)
+            {
+                previousSibling = null;
+                int siblingEnd = 0;
+                foreach (var t in DeserializedTokens)
+                {
+                    if (t == null) continue;
+                    if (t.Position < siblingEnd) continue;
+                    siblingEnd = t.Position + t.Size;
+
+                    if (t.Position < startPosition) continue;
+                    if (t.Position >= endPosition) break;
+                    previousSibling = t;
+                }
+
+                return previousSibling != null;
             }
 
             private static bool IsBodyExitLikeToken(Token t)

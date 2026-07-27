@@ -81,6 +81,61 @@ public sealed class ObjectTools(PackageSessionManager sessions)
         }, ct);
     }
 
+    [McpServerTool(Name = "list_functions", UseStructuredContent = true,
+        ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("Page through every UFunction in a loaded package with function flags and owning class/state. " +
+                 "Use network='server' to enumerate all client-to-server RPCs without relying on a Server* name, " +
+                 "network='client' for server-to-client RPCs, network='net' for either direction, or 'any' " +
+                 "(default) for all functions. Optional name_filter is a case-insensitive substring match.")]
+    public Task<IReadOnlyList<FunctionEntryDto>> ListFunctions(
+        [Description("Handle returned by load_package.")] string handle,
+        [Range(0, int.MaxValue), Description("Skip this many matching functions from the start. Default 0.")] int offset = 0,
+        [Range(1, 2000), Description("Maximum functions to return (1..2000). Default 200.")] int limit = 200,
+        [Description("Function filter: 'any' (default), 'net', 'server', or 'client'.")] string network = "any",
+        [Description("Optional case-insensitive substring filter applied to the function name.")] string? name_filter = null,
+        CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return sessions.RunAsync<IReadOnlyList<FunctionEntryDto>>(() =>
+        {
+            var pkg = sessions.Get(handle).Package;
+            PackageTools.EnsureInitialized(pkg);
+
+            string mode = string.IsNullOrWhiteSpace(network)
+                ? "any"
+                : network.Trim().ToLowerInvariant();
+            if (mode is not ("any" or "net" or "server" or "client"))
+            {
+                throw McpErrors.InvalidParam(
+                    "network must be one of: 'any', 'net', 'server', or 'client'.");
+            }
+
+            limit = limit <= 0 ? 200 : Math.Min(limit, 2000);
+            IEnumerable<UFunction> source = pkg.Objects.OfType<UFunction>();
+
+            source = mode switch
+            {
+                "net" => source.Where(f => f.FunctionFlags.HasFlag(FunctionFlag.Net)),
+                "server" => source.Where(f => f.FunctionFlags.HasFlag(FunctionFlag.NetServer)),
+                "client" => source.Where(f => f.FunctionFlags.HasFlag(FunctionFlag.NetClient)),
+                _ => source
+            };
+
+            if (!string.IsNullOrEmpty(name_filter))
+            {
+                source = source.Where(f =>
+                    f.Name.ToString().Contains(name_filter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return source
+                .OrderBy(f => f.GetReferencePath(), StringComparer.OrdinalIgnoreCase)
+                .Skip(Math.Max(0, offset))
+                .Take(limit)
+                .Select(BuildFunctionEntry)
+                .ToList();
+        }, ct);
+    }
+
     [McpServerTool(Name = "search_objects", UseStructuredContent = true,
         ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description("Case-insensitive substring search across object names in a loaded package. " +
@@ -240,6 +295,27 @@ public sealed class ObjectTools(PackageSessionManager sessions)
             flags: FlagsFormat.Format(f.FunctionFlags),
             param_count: f.EnumerateFields<UProperty>().Count(p => p.IsParm()),
             script_size: f.ScriptSize);
+
+    private static FunctionEntryDto BuildFunctionEntry(UFunction fn)
+    {
+        UObject? owner = fn.Outer;
+        UState? state = owner as UState;
+        while (owner is not null and not UClass)
+        {
+            owner = owner.Outer;
+        }
+
+        var cls = owner as UClass;
+        return new FunctionEntryDto(
+            name: fn.Name.ToString(),
+            path: fn.GetReferencePath(),
+            class_path: cls?.GetReferencePath() ?? string.Empty,
+            state_name: state is UClass ? null : state?.Name.ToString(),
+            native_index: fn.NativeToken,
+            flags: FlagsFormat.Format(fn.FunctionFlags),
+            param_count: fn.EnumerateFields<UProperty>().Count(p => p.IsParm()),
+            script_size: fn.ScriptSize);
+    }
 
     private static FuncInfoDto BuildFunctionInfo(UClass cls, UFunction fn)
     {

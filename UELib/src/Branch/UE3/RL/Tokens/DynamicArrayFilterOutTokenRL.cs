@@ -20,7 +20,16 @@ internal class DynamicArrayFilterOutTokenRL : UStruct.UByteCodeDecompiler.Dynami
 
 
         // Read Object
-        stream.ReadObject();
+        try
+        {
+            stream.ReadObject();
+        }
+        catch (System.ArgumentOutOfRangeException)
+        {
+        }
+        catch (System.InvalidCastException)
+        {
+        }
         Decompiler.AlignObjectSize();
 
         if (stream.Version >= (uint)PackageObjectLegacyVersion.EndTokenAppendedToArrayTokenIntrinsics)

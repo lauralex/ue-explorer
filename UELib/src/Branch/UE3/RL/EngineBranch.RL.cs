@@ -25,6 +25,17 @@ namespace UELib.Branch.UE3.RL
                 return base.BuildTokenMap(linker);
             }
 
+            // The June 25, 2026 packages retained package/licensee version 868/32,
+            // but rotated the script opcode table again.  Their generation table
+            // has seven entries; the May 12 fixtures used to derive the map below
+            // have five.  Select before constructing the legacy map so both fixture
+            // families remain usable.
+            if (linker.Summary.Generations != null &&
+                linker.Summary.Generations.Count >= 7)
+            {
+                return BuildGeneration7TokenMap();
+            }
+
             var tokenMap = new TokenMap((byte)ExprToken.ExtendedNative + 0x30)
             {
                 // 0x00: context-aware EX_Return / alignment-padding (RL-specific token).
@@ -41,17 +52,14 @@ namespace UELib.Branch.UE3.RL
                 // FunctionToken.DeserializeCall around its parm loop) and renders as
                 // EX_Return at top level / NothingToken inside a call.
                 { 0x00, typeof(ContextAwareReturnTokenRL) },
-                // 0x01: VERIFIED 1-sub-expression wrapper (parser case 0x01 → LABEL_70).
-                // UStruct::SerializeExpr (sub_7FF6CD38C840) groups 0x01 with 0x06 / 0x66
-                // (both BoolVariableToken), 0x52 (EatReturnValue), 0x5C (GotoLabel) — all
-                // 1-sub passthroughs. GNatives runtime handler at 0x7FF6CD2F0FB0 reads 2
-                // sub-opcodes (Let-shape) but the parser is authoritative for decompilation
-                // (per CLAUDE.md validation discipline; precedent: byte 0x2C ternary).
-                // Was StateVariableToken (8-byte FName read) — over-consumed and triggered
-                // the parse-recovery seek bug now fixed in ByteCodeDecompiler. Visible as
-                // the orphan `@NULL` token in Ball_TA.Explode at storage 521. Mapping to
-                // BoolVariableToken matches the parser grouping: read 1 sub, render the sub.
-                { 0x01, typeof(BoolVariableToken) },
+                // 0x01: VERIFIED delegate subscribe (2 sub-exprs; lhs delegate + rhs function).
+                // Runtime GNatives[0x01] (v868 sub_7FF6CD2F0FB0, May 12 sub_7FF768A10FB0)
+                // dispatches two sub-opcodes, then appends/marks the delegate binding in the
+                // receiver's delegate-list. UStruct::SerializeExpr still groups 0x01 in a
+                // 1-sub parser case and the loader walks the RHS as the following expression,
+                // but decompilation needs the runtime semantic shape to avoid orphan lines like
+                // `_0x1.Scorer.__Event...Delegate` followed by `_0x1.__Closure`.
+                { 0x01, typeof(EventSubscribeToken) },
                 { 0x02, typeof(IntConstToken) },
                 // 0x03: VERIFIED unmapped (binary handler = default error). Was wrongly
                 // StructCmpEqToken (which reads 8 bytes UObject* + 2 sub-exprs — way too much
@@ -76,7 +84,11 @@ namespace UELib.Branch.UE3.RL
                 // Was wrongly NameConstToken (which reads 8 bytes), causing `WorldInfo.''`
                 // patterns where the inner property name didn't resolve.
                 { 0x06, typeof(BoolVariableToken) },
-                { 0x07, typeof(ReturnNothingToken) },
+                // 0x07: VERIFIED UField/UObject ref + 1 sub-expression. Runtime tail-call
+                // skips the reference, dispatches the sub-expression, then zeroes the result.
+                // Was ReturnNothingToken, which consumed the reference but rendered empty,
+                // producing missing operands in comparisons like `HostGame != none`.
+                { 0x07, typeof(FieldWrappedExpressionTokenRL) },
                 // 0x08: empirically a 1-sub-token wrapper (best fit; EatReturnValue shape).
                 // Tied with InterfaceCast/DynamicCast/MetaClassCast/ObjectConst — all 1-sub
                 // shapes in baseline UE3. Picked EatReturnValue as the simplest leaf-of-leaf.
@@ -104,7 +116,7 @@ namespace UELib.Branch.UE3.RL
                 // then dispatches the RHS expression. Was EventSubscribeToken, which rendered
                 // boolean assignments like `bMessageReady = Array.Every(...)` as `+=`.
                 // Event subscribe/unsubscribe shapes live elsewhere (for example 0x48).
-                { 0x0C, typeof(LetBoolToken) },
+                { 0x0C, typeof(LetBoolTokenRL) },
                 // 0x0D: VERIFIED unmapped (binary handler = default error). Was wrongly
                 // DebugInfoToken (13-byte over-consume — silently swallowed adjacent tokens
                 // when this byte appeared in real bytecode).
@@ -134,23 +146,39 @@ namespace UELib.Branch.UE3.RL
                 // StateVariable based on linked-list-walk pattern, but OutParms is a more
                 // accurate match.
                 { 0x11, typeof(OutVariableToken) },
-                { 0x12, typeof(EatReturnValueTokenRL) },
-                { 0x13, typeof(NoObjectToken) },
+                // 0x12: VERIFIED parser shape: variadic body until 0x3E + optional
+                // DebugInfo + trailing value expression. Runtime handler
+                // GNatives[0x12] (sub_7FF6CD2F5740) loops until 0x3E, consumes optional
+                // debug byte 0x20, then dispatches one final expression. Was wrongly
+                // EatReturnValueTokenRL (4-byte UProperty leaf), which desynced functions
+                // with struct/sequence initializers such as FreeplayCommands_TA.ActivateFreeplayCommand.
+                { 0x12, typeof(VariadicReturnValueTokenRL) },
+                // 0x13: VERIFIED StateVariable-like field access in the May 12 dump.
+                // Latest handler sub_7FF768A0D3E0 reads an 8-byte UProperty* and
+                // resolves it through the current state frame (`*(a1+32)+0x30+offset`).
+                // The old v868 snapshot marked this as NoObject, which made state
+                // overrides parse object references as native opcodes (F9 12 00 00
+                // -> `Min(...)`) and cascade into truncated output.
+                { 0x13, typeof(StateVariableToken) },
                 { 0x14, typeof(DynamicArrayLengthToken) },
-                { 0x15, typeof(InterfaceContextToken) },
+                // 0x15: VERIFIED string length wrapper. Parser case is a single
+                // sub-expression. GNatives[0x15] (sub_7FF6CD2F59D0) steps that
+                // sub into a temporary FString, writes ArrayNum - 1 to the result,
+                // then frees the temporary buffer. Was InterfaceContextToken,
+                // which hid the wrapper and rendered `ErrorMessage > 0` instead
+                // of `ErrorMessage.Length > 0`.
+                { 0x15, typeof(StringLengthTokenRL) },
                 // 0x16: VERIFIED DynamicArrayElement (sister to 0x05 ArrayElement — same handler).
                 // GNatives[0x16] = sub_7FF6CD2F6800 (same address as 0x05). The two opcodes share
                 // a runtime dispatch path because the array-element access logic is identical
                 // for static and dynamic arrays at this level.
                 { 0x16, typeof(DynamicArrayElementToken) },
-                // 0x17: VERIFIED 2-sub-expr delegate-access (NOT DelegatePropertyToken).
-                // GNatives[0x17] = sub_7FF6CD2F1580 dispatches 2 sub-expressions then walks
-                // the receiver's delegate-list at +16 to locate matching entries. Wire
-                // format = 2 sub-exprs. New token DelegateAccessTokenRL renders as
-                // `{Receiver}.{Function}`. Was wrongly DelegatePropertyToken (8-byte FName +
-                // 1 sub) which NRE'd in Car_TA.HandleTeamChanged producing ` += ; self`
-                // orphans inside the EventSubscribe LHS.
-                { 0x17, typeof(DelegateAccessTokenRL) },
+                // 0x17: VERIFIED delegate unsubscribe (2 sub-exprs; lhs delegate + rhs function).
+                // GNatives[0x17] (v868 sub_7FF6CD2F1580, May 12 sub_7FF768A11580) dispatches
+                // two sub-opcodes, locates the matching delegate-list entry, then clears it.
+                // Rendering as a property access left invalid source such as
+                // `PRI.__EventTeamChanged__Delegate.HandleTeamChanged`.
+                { 0x17, typeof(EventUnsubscribeToken) },
                 // 0x18: VERIFIED unmapped (binary handler = default error). Was wrongly
                 // ConditionalToken (3 sub-exprs + 2 u16s — heavily over-consumed when this
                 // byte appeared in real bytecode, cascading into garbled if/while bodies).
@@ -357,11 +385,13 @@ namespace UELib.Branch.UE3.RL
                 // UE3 EX_InstanceDelegate carries only the FName). Was wrongly VectorConst
                 // (12 bytes — under-read 4 bytes per occurrence).
                 { 0x32, typeof(InstanceDelegateTokenRL) },
-                // 0x33: VERIFIED 1-sub-expr DynArray-result wrapper. Reads 1 sub-expr,
-                // then accesses dynarray-result globals + does a vtable call. Logs
-                // "Result given to DynArrayResult method". Conservative mapping —
-                // EatReturnValue (1-sub passthrough) until full semantics understood.
-                { 0x33, typeof(EatReturnValueTokenRL) },
+                // 0x33: VERIFIED 2-sub-expr DynArray-result wrapper. Latest handler
+                // sub_7FF768A11770 dispatches the first sub to establish dynarray
+                // result globals, dispatches the second sub with that result slot, and
+                // logs "Result given to DynArrayResult method" when an outer result is
+                // requested. Was previously EatReturnValueTokenRL, which read a bogus
+                // UProperty index and desynced array Map expressions.
+                { 0x33, typeof(DynArrayResultTokenRL) },
                 // 0x34: VERIFIED unmapped (binary handler = default error). Was wrongly
                 // LetDelegateToken (2 sub-exprs + cleanup — over-consumed).
                 { 0x34, typeof(NothingToken) },
@@ -405,7 +435,12 @@ namespace UELib.Branch.UE3.RL
                 // Was wrongly mapped to DebugInfo by score-mapping (which only measures
                 // byte alignment, not semantics).
                 { 0x3A, typeof(TrueToken) },
-                { 0x3B, typeof(ObjectConstToken) },
+                // 0x3B: VERIFIED FName leaf. UStruct::SerializeExpr case 0x3B
+                // calls the FName serializer (vtable slot 64) and advances 8.
+                // Was ObjectConstToken, which consumed only the 4-byte object index
+                // storage and left the FName number as orphan 0x00 tokens, producing
+                // bogus LogInternal categories and DynArrayFindStruct property names.
+                { 0x3B, typeof(NameConstToken) },
                 // 0x3C: VERIFIED unmapped (binary handler = default error). Was wrongly
                 // TwoStepToken (which over-consumes).
                 { 0x3C, typeof(NothingToken) },
@@ -468,7 +503,7 @@ namespace UELib.Branch.UE3.RL
                 // of the "Attempt to assign variable through None" cleanup that 0x4C does
                 // suggests this is the boolean variant **EX_LetBool** (no NULL check needed
                 // since bool storage is always backed). Was wrongly DelegateCmpEq.
-                { 0x46, typeof(LetBoolToken) },
+                { 0x46, typeof(LetBoolTokenRL) },
                 // 0x47: VERIFIED EmptyParmValue (skipped optional argument, NOT Stop).
                 // Empirically appears 6 times in a row inside `Spawn(ControllerClass, ?, ?, ?,
                 // ?, ?, ?)` — that's the 6 optional arguments of Spawn (Owner, Tag, Location,
@@ -479,7 +514,11 @@ namespace UELib.Branch.UE3.RL
                 // either Stop or EmptyParm at runtime, but the contextual usage (always as
                 // call args) confirms EmptyParm.
                 { 0x47, typeof(EmptyParmToken) },
-                { 0x48, typeof(EventSubscribeToken) },
+                // 0x48: VERIFIED RL filter/editor-only style jump metadata.
+                // Runtime GNatives[0x48] (May 12 sub_7FF768A2D7C0) reads u16 jump offset,
+                // an 8-byte FName-like discriminator, then a byte, and conditionally moves
+                // Code to the offset. It is NOT delegate subscribe; real subscribe is 0x01.
+                { 0x48, typeof(FilterEditorOnlyTokenRL) },
                 // 0x49: VERIFIED Let-shape (reads 2 sub-opcodes, like EX_Let / LetBool / LetDelegate).
                 // GNatives[0x49] = sub_7FF6CD2F0C60: dispatches sub-opcode A, captures result via
                 // qword_..._D7B0, dispatches sub-opcode B; if first result was non-null, calls
@@ -487,7 +526,7 @@ namespace UELib.Branch.UE3.RL
                 // the LHS suggests this is **EX_LetDelegate** (which has to release the previous
                 // delegate before assigning the new one). Was wrongly NothingToken (1-byte leaf) —
                 // every occurrence in real bytecode was severely under-consuming.
-                { 0x49, typeof(LetDelegateToken) },
+                { 0x49, typeof(LetDelegateTokenRL) },
                 // 0x4A: VERIFIED StructMember (8 bytes + 8 bytes + 2 bytes + sub-expr).
                 // GNatives[0x4A] = sub_7FF6CD2F6590 reads UProperty* (v8), UStruct* (v9), 1 byte
                 // (v10 — local-copy flag), 1 byte (v15 — modified flag), then dispatches sub-opcode
@@ -506,7 +545,7 @@ namespace UELib.Branch.UE3.RL
                 // to EndFunctionParms; the real terminator is 0x3E. This was the keystone
                 // mistake: variadic loops were terminating ONE byte too early on Let
                 // assignments, scrambling all token alignment downstream.
-                { 0x4C, typeof(LetToken) },
+                { 0x4C, typeof(LetTokenRL) },
                 // 0x4D: VERIFIED 8-byte UStruct* + 1 sub-expr (struct construction / value).
                 // GNatives[0x4D] = sub_7FF6CD2F5B80 reads 8-byte UStruct*, allocates a struct
                 // buffer of size `v4[28] * v4[29]`, dispatches a sub-opcode, then calls
@@ -777,6 +816,155 @@ namespace UELib.Branch.UE3.RL
             };
 
             return tokenMap;
+        }
+
+        /// <summary>
+        /// Opcode rotation used by the June 25, 2026 Rocket League packages
+        /// (package version 868, licensee version 32, generation count 7).
+        ///
+        /// Runtime handlers were matched against the annotated May v868 IDB and
+        /// every storage shape was cross-checked against UStruct::SerializeExpr
+        /// at 0x7FF6B670E540 in the corresponding executable.  In particular,
+        /// EX_EndFunctionParms moved from 0x3E to 0x16 and EX_Conditional moved
+        /// from 0x2C to 0x45.
+        /// </summary>
+        private static TokenMap BuildGeneration7TokenMap()
+        {
+            return new TokenMap((byte)ExprToken.ExtendedNative + 0x30)
+            {
+                { 0x00, typeof(NothingToken) },
+                { 0x01, typeof(InstanceVariableToken) },
+                { 0x02, typeof(DefaultVariableToken) },
+                { 0x03, typeof(StateVariableToken) },
+                { 0x04, typeof(ContextAwareReturnTokenRL) },
+                { 0x05, typeof(SwitchToken) },
+                { 0x06, typeof(JumpToken) },
+                { 0x07, typeof(JumpIfNotToken) },
+                { 0x08, typeof(StopToken) },
+                { 0x09, typeof(AssertExpressionTokenRL) },
+                { 0x0A, typeof(CaseToken) },
+                { 0x0B, typeof(NothingToken) },
+                { 0x0C, typeof(LabelTableToken) },
+                { 0x0D, typeof(GotoLabelToken) },
+                { 0x0E, typeof(StructValueTokenRL) },
+                { 0x0F, typeof(LetToken) },
+                { 0x10, typeof(NothingToken) },
+                { 0x11, typeof(NewExpressionTokenRL) },
+                { 0x12, typeof(ClassContextToken) },
+                { 0x13, typeof(PropertySetterDiscardTokenRL) },
+                { 0x14, typeof(LetBoolTokenRL) },
+                { 0x15, typeof(EndParmValueToken) },
+                { 0x16, typeof(EndFunctionParmsToken) },
+                { 0x17, typeof(SelfToken) },
+                { 0x18, typeof(SkipToken) },
+                { 0x19, typeof(ContextToken) },
+                { 0x1A, typeof(ArrayElementToken) },
+                { 0x1B, typeof(VirtualFunctionToken) },
+                { 0x1C, typeof(FinalFunctionTokenRL) },
+                { 0x1D, typeof(IntConstToken) },
+                { 0x1E, typeof(FloatConstToken) },
+                { 0x1F, typeof(StringConstToken) },
+                { 0x20, typeof(ObjectConstToken) },
+                { 0x21, typeof(NameConstToken) },
+                { 0x22, typeof(RotationConstToken) },
+                { 0x23, typeof(VectorConstToken) },
+                { 0x24, typeof(IntConstByteToken) },
+                { 0x25, typeof(IntZeroToken) },
+                { 0x26, typeof(IntOneToken) },
+                { 0x27, typeof(TrueToken) },
+                { 0x28, typeof(FalseToken) },
+                { 0x29, typeof(LocalVariableToken) },
+                { 0x2A, typeof(NoObjectToken) },
+                { 0x2B, typeof(LocalVariableToken) },
+                { 0x2C, typeof(ByteConstToken) },
+                { 0x2D, typeof(BoolVariableToken) },
+                { 0x2E, typeof(DynamicCastToken) },
+                { 0x2F, typeof(IteratorToken) },
+                { 0x30, typeof(IteratorPopToken) },
+                { 0x31, typeof(IteratorNextToken) },
+                { 0x32, typeof(StructCmpEqToken) },
+                { 0x33, typeof(StructCmpNeToken) },
+                { 0x34, typeof(UnicodeStringConstToken) },
+                { 0x35, typeof(StructMemberToken) },
+                { 0x36, typeof(NothingToken) },
+                { 0x37, typeof(GlobalFunctionToken) },
+                { 0x38, typeof(PrimitiveCastToken) },
+                { 0x39, typeof(NothingToken) },
+                { 0x3A, typeof(ReturnNothingToken) },
+                { 0x3B, typeof(ArrayElementToken) },
+                { 0x3C, typeof(DynamicArrayElementToken) },
+                { 0x3D, typeof(DynamicArrayElementToken) },
+                { 0x3E, typeof(DynamicArrayElementToken) },
+                { 0x3F, typeof(EmptyDelegateToken) },
+                { 0x40, typeof(NothingToken) },
+                { 0x41, typeof(DebugInfoToken) },
+                { 0x42, typeof(DelegateFunctionToken) },
+                { 0x43, typeof(InstanceDelegateTokenRL) },
+                { 0x44, typeof(LetDelegateToken) },
+                { 0x45, typeof(ConditionalToken) },
+                { 0x46, typeof(OutVariableToken) },
+                { 0x47, typeof(OptionalArgSkipTokenRL) },
+                { 0x48, typeof(EmptyParmToken) },
+                { 0x49, typeof(DelegateFunctionRefTokenRL) },
+                { 0x4A, typeof(BoolVariableToken) },
+                { 0x4B, typeof(FieldWrappedExpressionTokenRL) },
+                { 0x4C, typeof(NothingToken) },
+                { 0x4D, typeof(JumpToken) },
+                { 0x4E, typeof(NothingToken) },
+                { 0x4F, typeof(NothingToken) },
+                { 0x50, typeof(EventSubscribeToken) },
+                { 0x51, typeof(EventUnsubscribeToken) },
+                { 0x52, typeof(LetBoolTokenRL) },
+                { 0x53, typeof(FilterEditorOnlyTokenRL) },
+                { 0x54, typeof(VariadicReturnValueTokenRL) },
+                { 0x55, typeof(StringLengthTokenRL) },
+                { 0x56, typeof(StructDefaultParameterTokenRL) },
+                { 0x57, typeof(Tokens.ExtendedNativeFunctionToken) },
+                { 0x58, typeof(DynArrayResultTokenRL) },
+                { 0x59, typeof(NameConstToken) },
+                { 0x5A, typeof(NullConditionalCallTokenRL) },
+                { 0x5B, typeof(DiscardKeepTokenRL) },
+                { 0x5C, typeof(StringCastTokenRL) },
+                { 0x5D, typeof(StateFunctionTokenRL) },
+                { 0x5E, typeof(BoolVariableToken) },
+                { 0x5F, typeof(NothingToken) },
+                { 0x60, typeof(LocalVariableToken) },
+                { 0x61, typeof(NothingToken) },
+                { 0x62, typeof(NothingToken) },
+                { 0x63, typeof(NothingToken) },
+                { 0x64, typeof(NothingToken) },
+                { 0x65, typeof(NothingToken) },
+                { 0x66, typeof(NothingToken) },
+                { 0x67, typeof(NothingToken) },
+                { 0x68, typeof(NothingToken) },
+                { 0x69, typeof(NothingToken) },
+                { 0x6A, typeof(NothingToken) },
+                { 0x6B, typeof(NothingToken) },
+                { 0x6C, typeof(NothingToken) },
+                { 0x6D, typeof(NothingToken) },
+                { 0x6E, typeof(NothingToken) },
+                { 0x6F, typeof(NothingToken) },
+
+                { 0x70, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x71, typeof(ExAlternativeExtendedNativeFunctionTokenRL) },
+                { 0x72, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x73, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x74, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x75, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x76, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x77, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x78, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x79, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7A, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7B, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7C, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7D, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7E, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x7F, typeof(ChainedNativeDispatcherTokenRL) },
+                { 0x82, typeof(AndTokenRL) },
+                { 0x84, typeof(OrTokenRL) },
+                { 0xC8, typeof(NothingToken) },
+            };
         }
 
         protected override void SetupTokenFactory(UnrealPackage linker)

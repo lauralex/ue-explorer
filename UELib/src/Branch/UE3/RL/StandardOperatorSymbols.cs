@@ -170,5 +170,79 @@ namespace UELib.Branch.UE3.RL
             { 241, new("<",  FunctionType.Operator,     24) },  // Less_StrStr
             { 248, new("$",  FunctionType.Operator,     40) },  // Concat_StrStr (RL alt of 112)
         };
+
+        public static bool TryResolveByName(string name, out OperatorEntry entry)
+        {
+            entry = default;
+            if (string.IsNullOrEmpty(name))
+            {
+                return false;
+            }
+
+            if (TryResolveBinaryByPrefix(name, out entry))
+            {
+                return true;
+            }
+
+            if (name.Contains("_Pre"))
+            {
+                if (name.StartsWith("Not_", System.StringComparison.Ordinal))
+                {
+                    entry = new OperatorEntry("!", FunctionType.PreOperator, 0);
+                    return true;
+                }
+                if (name.StartsWith("Subtract_", System.StringComparison.Ordinal))
+                {
+                    entry = new OperatorEntry("-", FunctionType.PreOperator, 0);
+                    return true;
+                }
+                if (name.StartsWith("Complement_", System.StringComparison.Ordinal))
+                {
+                    entry = new OperatorEntry("~", FunctionType.PreOperator, 0);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveBinaryByPrefix(string name, out OperatorEntry entry)
+        {
+            entry = default;
+            (string Prefix, string Symbol, byte Precedence)[] operators =
+            {
+                ("ComplementEqual_", "~=", 24),
+                ("GreaterEqual_", ">=", 24),
+                ("LessEqual_", "<=", 24),
+                ("EqualEqual_", "==", 24),
+                ("NotEqual_", "!=", 26),
+                ("Greater_", ">", 24),
+                ("Less_", "<", 24),
+                ("MultiplyEqual_", "*=", 34),
+                ("DivideEqual_", "/=", 34),
+                ("AddEqual_", "+=", 34),
+                ("SubtractEqual_", "-=", 34),
+                ("ConcatEqual_", "$=", 44),
+                ("AtEqual_", "@=", 44),
+                ("Multiply_", "*", 16),
+                ("Divide_", "/", 16),
+                ("Percent_", "%", 18),
+                ("Add_", "+", 20),
+                ("Subtract_", "-", 20),
+                ("Concat_", "$", 40),
+                ("At_", "@", 40),
+            };
+
+            foreach (var op in operators)
+            {
+                if (name.StartsWith(op.Prefix, System.StringComparison.Ordinal))
+                {
+                    entry = new OperatorEntry(op.Symbol, FunctionType.Operator, op.Precedence);
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

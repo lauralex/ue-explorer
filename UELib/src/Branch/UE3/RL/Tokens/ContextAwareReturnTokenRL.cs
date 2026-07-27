@@ -30,7 +30,7 @@ namespace UELib.Branch.UE3.RL.Tokens;
 /// </list>
 /// </para>
 /// </summary>
-public class ContextAwareReturnTokenRL : UStruct.UByteCodeDecompiler.Token
+public class ContextAwareReturnTokenRL : UStruct.UByteCodeDecompiler.ReturnToken
 {
     private bool _IsReturnContext;
 
@@ -86,6 +86,29 @@ public class ContextAwareReturnTokenRL : UStruct.UByteCodeDecompiler.Token
                 _IsReturnContext = false;
                 return;
             }
+        }
+
+        // RL often stores an explicit `return;` immediately followed by the
+        // function-end safety `return;` (`0x00 0x1D 0x00 0x1D 0x10`). Keep the
+        // real statement and suppress the adjacent duplicate terminal return.
+        for (int i = tokens.Count - 2; i >= 0; --i)
+        {
+            var prev = tokens[i];
+            if (prev is UStruct.UByteCodeDecompiler.DebugInfoToken
+                || prev is UStruct.UByteCodeDecompiler.NothingToken
+                || prev is UStruct.UByteCodeDecompiler.NoObjectToken)
+            {
+                continue;
+            }
+
+            if (prev is ContextAwareReturnTokenRL { _IsReturnContext: true }
+                && prev.StoragePosition + prev.StorageSize == StoragePosition)
+            {
+                _IsReturnContext = false;
+                return;
+            }
+
+            break;
         }
 
         // Peek one byte without advancing the stream. If it's also 0x00, we're

@@ -8,7 +8,17 @@ public class ExAlternativeExtendedNativeFunctionTokenRL : UStruct.UByteCodeDecom
     // Build custom extended native function opcode map
     private static readonly TokenMap s_extendedNativeFunctionTokenMap = new()
     {
-        { 0x39, typeof(IteratorTokenRL) },
+        // Actor iterator natives. Runtime handlers dispatch fixed args, skip the
+        // EndFunctionParms byte, then read a u16 foreach end offset.
+        { 0x30, typeof(NativeIteratorFunctionTokenRL) }, // AllActors
+        { 0x31, typeof(NativeIteratorFunctionTokenRL) }, // ChildActors
+        { 0x32, typeof(NativeIteratorFunctionTokenRL) }, // BasedActors
+        { 0x33, typeof(NativeIteratorFunctionTokenRL) }, // TouchingActors
+        { 0x35, typeof(NativeIteratorFunctionTokenRL) }, // TraceActors
+        { 0x37, typeof(NativeIteratorFunctionTokenRL) }, // VisibleActors
+        { 0x38, typeof(NativeIteratorFunctionTokenRL) }, // VisibleCollidingActors
+        { 0x39, typeof(NativeIteratorFunctionTokenRL) }, // DynamicActors
+        { 0x41, typeof(NativeIteratorFunctionTokenRL) }, // CollidingActors
     };
 
     public override void Deserialize(IUnrealStream stream)
@@ -23,6 +33,11 @@ public class ExAlternativeExtendedNativeFunctionTokenRL : UStruct.UByteCodeDecom
         if (s_extendedNativeFunctionTokenMap.TryGetValue(opCode, out var tokenType))
         {
             var extendedNativeToken = (UStruct.UByteCodeDecompiler.Token)Activator.CreateInstance(tokenType)!;
+            if (extendedNativeToken is NativeIteratorFunctionTokenRL iteratorToken)
+            {
+                iteratorToken.NativeIndex = (ushort)(opCode + 256);
+            }
+
             Decompiler.DeserializedTokens.Add(extendedNativeToken);
             extendedNativeToken.OpCode = opCode;
             extendedNativeToken.Decompiler = Decompiler;

@@ -61,6 +61,35 @@ public sealed class DecompilerToolsTests
     }
 
     [TestMethod]
+    public async Task ListFunctions_NameFilter_ReturnsEnrichedEntries()
+    {
+        var (sessions, _, obj, _, handle) = await OpenAsync("TestUC2.u");
+        await using var _disp = sessions;
+
+        var functions = await obj.ListFunctions(
+            handle,
+            limit: 50,
+            network: "any",
+            name_filter: "Function2");
+
+        Assert.IsTrue(functions.Count > 0);
+        Assert.IsTrue(functions.All(f =>
+            f.name.Contains("Function2", StringComparison.OrdinalIgnoreCase)));
+        Assert.IsTrue(functions.All(f => !string.IsNullOrEmpty(f.path)));
+        Assert.IsTrue(functions.All(f => !string.IsNullOrEmpty(f.class_path)));
+    }
+
+    [TestMethod]
+    public async Task ListFunctions_InvalidNetworkFilter_ThrowsMcpException()
+    {
+        var (sessions, _, obj, _, handle) = await OpenAsync("TestUC2.u");
+        await using var _disp = sessions;
+
+        await Assert.ThrowsExceptionAsync<McpException>(
+            () => obj.ListFunctions(handle, network: "sideways"));
+    }
+
+    [TestMethod]
     public async Task DecompileClass_ProducesSourceText()
     {
         var (sessions, _, _, dec, handle) = await OpenAsync("TestUC2.u");
@@ -89,6 +118,24 @@ public sealed class DecompilerToolsTests
         // Either source is non-empty, or warning explains why.
         Assert.IsTrue(result.source.Length > 0 || !string.IsNullOrEmpty(result.warning),
             "Either source or warning must be populated.");
+    }
+
+    [TestMethod]
+    public async Task SearchFunctionSource_FindsDecompiledCallSite()
+    {
+        var (sessions, _, _, dec, handle) = await OpenAsync("TestUC2.u");
+        await using var _disp = sessions;
+
+        var result = await dec.SearchFunctionSource(
+            handle,
+            "return",
+            max_results: 20,
+            max_functions: 500);
+
+        Assert.IsTrue(result.scanned > 0);
+        Assert.IsTrue(result.matched > 0);
+        Assert.IsTrue(result.matches.All(m =>
+            m.snippet.Contains("return", StringComparison.OrdinalIgnoreCase)));
     }
 
     [TestMethod]

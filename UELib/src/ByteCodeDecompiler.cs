@@ -270,6 +270,18 @@ namespace UELib.Core
                     _Container.MaybeDisposeBuffer();
                 }
 
+                // Recursive token deserializers can occasionally walk a few bytes past
+                // the on-disk script payload when ByteScriptSize (expanded memory layout)
+                // is larger than the actual serialized byte count. The central loop's
+                // buffer bound catches the next top-level iteration, but child tokens may
+                // already have been appended. Drop only tokens that start beyond the real
+                // script bytes; keeping them produces phantom casts/natives from the next
+                // object or padding after the end-of-script sentinel.
+                if (_Container.ScriptSize > 0)
+                {
+                    DeserializedTokens.RemoveAll(t => t.StoragePosition >= _Container.ScriptSize);
+                }
+
                 // Post-deserialize fixup: snap forward CodeOffsets in
                 // JumpToken/JumpIfNot/Case/Iterator to nearest sibling token
                 // boundary. Recovers from RL cooker undercount where in-memory

@@ -217,6 +217,41 @@ namespace UELib.Core
                             }
                         }
 #endif
+#if ROCKETLEAGUE
+                        if (Package.Build == UnrealPackage.GameBuild.BuildName.RocketLeague)
+                        {
+                            switch ((uint)CastOpCode)
+                            {
+                                // RL extends the stock UE3 primitive cast table with qword casts.
+                                case 0x61: // QWordToInt
+                                    castTypeName = "int";
+                                    break;
+                                case 0x62: // IntToQWord
+                                case 0x64: // StringToQWord
+                                case 0x69: // FloatToQWord
+                                    castTypeName = "qword";
+                                    break;
+                                case 0x63: // QWordToString
+                                    castTypeName = "string";
+                                    break;
+                                case 0x66: // StringToUniqueNetId
+                                    castTypeName = "UniqueNetId";
+                                    break;
+                                case 0x68: // QWordToFloat
+                                    castTypeName = "float";
+                                    break;
+                            }
+                        }
+#endif
+                    }
+
+                    if (castTypeName == default
+#if ROCKETLEAGUE
+                        && Package.Build == UnrealPackage.GameBuild.BuildName.RocketLeague
+#endif
+                       )
+                    {
+                        castTypeName = $"/* unresolved primitive cast 0x{(uint)CastOpCode:X} */";
                     }
 
                     Debug.Assert(castTypeName != default, $"Detected an unresolved token '0x{CastOpCode:X}'.");

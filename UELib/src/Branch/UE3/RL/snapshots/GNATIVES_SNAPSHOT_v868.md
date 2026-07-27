@@ -32,13 +32,13 @@ unmapped in RL and should never appear in valid bytecode.
 | Byte | Handler              | Wire format / shape                                  | Token mapping                            |
 |------|----------------------|------------------------------------------------------|------------------------------------------|
 | 0x00 | `sub_7FF6CD31ACB0`   | ERROR                                                | `ContextAwareReturnTokenRL` (RL emits this byte both as `EX_Return` at top level and as alignment padding inside variadic args; the token disambiguates by VariadicCallDepth + DeserializationDepth + peek). |
-| 0x01 | `sub_7FF6CD2F0FB0`   | runtime: 2 sub-exprs (Let-shape); parser case (LABEL_70): 1 sub. Parser is authoritative for decompile (cooker emits parse-time format). | `BoolVariableToken` (1-sub passthrough; same parser group as 0x06/0x66) |
+| 0x01 | `sub_7FF6CD2F0FB0`   | runtime: 2 sub-exprs + delegate-list add/mark (delegate subscribe); parser case (LABEL_70): 1 sub and leaves RHS as the next expression. | `EventSubscribeToken` (consume both runtime operands so delegate bindings render as `+=`) |
 | 0x02 | `sub_7FF6CD31ACB0`   | ERROR                                                | `IntConstToken` (legacy, harmless if absent) |
 | 0x03 | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x04 | `sub_7FF6CD31ACB0`   | ERROR                                                | `EndOfScriptToken` |
 | 0x05 | `sub_7FF6CD2F6800`   | 2 sub-exprs + dispatch (alias 0x16; ArrayElement)    | `ArrayElementToken` |
 | 0x06 | `sub_7FF6CD2F0020`   | 1 sub + 8-byte peek (BoolVariable)                   | `BoolVariableToken` |
-| 0x07 | `sub_7FF6CD2F7360`   | tail-call wrapper                                    | `ReturnNothingToken` (legacy) |
+| 0x07 | `sub_7FF6CD2F7360`   | UField/UObject ref + 1 sub-expression wrapper        | `FieldWrappedExpressionTokenRL` |
 | 0x08 | `sub_7FF6CD31ACB0`   | ERROR                                                | `EatReturnValueToken` (placeholder) |
 | 0x09 | `sub_7FF6CD2F5930`   | optional 0x20 prefix + 2 sub-exprs (comma operator)  | `DiscardKeepTokenRL` |
 | 0x0A | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
@@ -49,12 +49,12 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x0F | `sub_7FF6CD2F5F00`   | 8-byte UFunction* + dispatch (FinalFunction)         | `FinalFunctionTokenRL` |
 | 0x10 | `sub_7FF6CD2F00C0`   | "Execution beyond end of script" sentinel            | `NothingToken` |
 | 0x11 | `sub_7FF6CD2ED370`   | 8-byte qword + walk OutParms list                    | `OutVariableToken` |
-| 0x12 | `sub_7FF6CD2F5740`   | variadic body until 0x3E + dispatch (FinalFunction-fused) | `EatReturnValueToken` (placeholder) |
-| 0x13 | `sub_7FF6CD2ED3E0`   | NoObject-shape                                       | `NoObjectToken` |
+| 0x12 | `sub_7FF6CD2F5740`   | variadic body until 0x3E + optional debug + trailing dispatch | `VariadicReturnValueTokenRL` |
+| 0x13 | `sub_7FF6CD2ED3E0`   | state-frame/property storage access                  | `StateVariableToken` |
 | 0x14 | `sub_7FF6CD31ACB0`   | ERROR                                                | `DynamicArrayLengthToken` (legacy, harmless if absent) |
-| 0x15 | `sub_7FF6CD2F59D0`   | 1 sub-expr + write 0 to result                       | `InterfaceContextToken` (TBD) |
+| 0x15 | `sub_7FF6CD2F59D0`   | 1 sub-expr into temporary FString; result = ArrayNum - 1 | `StringLengthTokenRL` |
 | 0x16 | `sub_7FF6CD2F6800`   | alias 0x05 (ArrayElement)                            | `DynamicArrayElementToken` |
-| 0x17 | `sub_7FF6CD2F1580`   | 2 sub-exprs + delegate-list walk (delegate access)   | `DelegateAccessTokenRL` |
+| 0x17 | `sub_7FF6CD2F1580`   | 2 sub-exprs + delegate-list walk/clear (delegate unsubscribe) | `EventUnsubscribeToken` |
 | 0x18 | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x19 | `sub_7FF6CD2F1750`   | 1 byte + dispatch into sub-table at `0x7FF6CF2B2D80` (dynarray methods) | `ExtendedNativeFunctionToken` |
 | 0x1A | `sub_7FF6CD2F70C0`   | 8-byte UClass* + 1 sub-expr + class-flag check (DynamicCast) | `DynamicCastToken` |
@@ -82,7 +82,7 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x30 | `sub_7FF6CD2F9C50`   | 12 bytes (3 INTs) (VectorConst)                      | `VectorConstToken` |
 | 0x31 | `sub_7FF6CD2ED4A0`   | u16 + variadic body until 0x4F (debug block)         | `OptionalArgSkipTokenRL` (works in practice via 1-sub spillover) |
 | 0x32 | `sub_7FF6CD2F6180`   | runtime: 8-byte UObject* + 8-byte FName. Parser case (LABEL_79): 8-byte FName FIRST, then 4-byte UProperty (4 disk → 8 mem). Parser is authoritative for decompile. | `InstanceDelegateTokenRL` (read order: FName then UProperty; defensive UProperty lookup) |
-| 0x33 | `sub_7FF6CD2F1770`   | 2 sub-exprs + dynarray-result handling               | `EatReturnValueToken` (1-sub passthrough — best effort) |
+| 0x33 | `sub_7FF6CD2F1770`   | 2 sub-exprs + dynarray-result handling               | `DynArrayResultTokenRL` |
 | 0x34 | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x35 | `sub_7FF6CD31ACB0` (TBD verify) | ERROR? (was NameConst by guess)            | `NameConstToken` (legacy) |
 | 0x36 | `sub_7FF6CD2F7250`   | 8-byte UProperty* + sub + zero-result (property setter discard) | `PropertySetterDiscardTokenRL` |
@@ -90,7 +90,7 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x38 | `sub_7FF6CD308710`   | sub + 2 bytes + UField + type + sub (ClassContext)   | `ClassContextToken` |
 | 0x39 | `sub_7FF6CD2F6FA0`   | 8-byte qword (alias 0x3B, 0x43, 0x5A; NameConst-shape) | `NameConstToken` |
 | 0x3A | `sub_7FF6CD2F7040`   | alias 0x2F (write 1, 4-byte)                         | `TrueToken` |
-| 0x3B | `sub_7FF6CD2F6FA0`   | alias 0x39 (8-byte qword leaf)                       | `ObjectConstToken` |
+| 0x3B | `sub_7FF6CD2F6FA0`   | FName leaf (parser calls FName serializer + advances 8) | `NameConstToken` |
 | 0x3C | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x3D | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x3E | `sub_7FF6CD2F00B0`   | `qword=0; --Code` (variadic terminator)              | `EndFunctionParmsToken` |
@@ -103,7 +103,7 @@ unmapped in RL and should never appear in valid bytecode.
 | 0x45 | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
 | 0x46 | `sub_7FF6CD2F12A0`   | 2 sub-exprs (LetBool-shape, no NULL cleanup)         | `LetBoolToken` |
 | 0x47 | `sub_7FF6CD2F0360`   | 1 byte (EmptyParmValue)                              | `EmptyParmToken` |
-| 0x48 | `sub_7FF6CD30D7C0`   | (delegate subscribe)                                 | `EventSubscribeToken` |
+| 0x48 | `sub_7FF6CD30D7C0`   | u16 jump offset + 8-byte FName-like discriminator + byte; conditionally jumps to offset | `FilterEditorOnlyTokenRL` |
 | 0x49 | `sub_7FF6CD2F0C60`   | 2 sub + delegate cleanup (LetDelegate)               | `LetDelegateToken` |
 | 0x4A | `sub_7FF6CD2F6590`   | UProperty + UStruct + 2 bytes + sub (StructMember)   | `StructMemberToken` |
 | 0x4B | `sub_7FF6CD31ACB0`   | ERROR                                                | `NothingToken` |
@@ -150,41 +150,36 @@ unmapped in RL and should never appear in valid bytecode.
   Mapped entries (in `ExtendedNativeFunctionToken.s_extendedNativeFunctionTokenMap`):
   +0 DynamicArrayElementTokenRL, +1 DynArrayLength, +3 DynArrayRemove, +4
   DynArrayFindContains, +5 DynArrayFindStruct, +6 DynArrayAdd, +7
-  DynArrayAddItem, +8 DynArrayRemoveItem, +0x0A DynArrayIterator, +0x0B
-  VariadicArrayConcat, +0x0C VariadicArrayAddUniqueItems, +0x0D
-  DynArrayAddUniqueItem, +0x21 DynArrayFilterOut, +0x22 DynArrayMap, +0x24
-  FindFirstWithDelegate, +0x25 DynArrayEvery, +0x26 DynArrayAny, +0x28
-  VariadicArrayFillOut, +0x29 DynArrayFilter, +0x2B DynArrayFirst, +0x2C DynArrayEqual, +0x30
-  DynArrayFindType, +0x31 DynArrayConcat.
+  DynArrayAddItem, +8 DynArrayRemoveItem, +9 DynArrayInsertItem,
+  +0x0A DynArrayIterator, +0x0B VariadicArrayConcat, +0x0C
+  VariadicArrayAddUniqueItems, +0x0D DynArrayAddUniqueItem, +0x0E/+0x0F
+  DynArraySort, +0x20 DynamicArraySortedCopyTokenRL, +0x21
+  DynArrayFilterOut, +0x22 DynArrayMap, +0x23 DynamicArrayReduceTokenRL,
+  +0x24 FindFirstWithDelegate, +0x25 DynArrayEvery, +0x26 DynArrayAny,
+  +0x27 DynamicArrayConcatTokenRL, +0x28 VariadicArrayFillOut, +0x29
+  DynArrayFilter, +0x2A DynamicArrayDistinctTokenRL, +0x2B DynArrayFirst,
+  +0x2C DynArrayEqual, +0x2E DynamicArrayOfTypeTokenRL, +0x2F
+  DynamicArrayFlatMapTokenRL, +0x30 DynArrayFindType, +0x31
+  DynArrayConcat, +0x32 DynamicArrayIntersectTokenRL, +0x33
+  DynamicArrayDifferenceTokenRL, +0x34 DynamicArrayToStringTokenRL,
+  +0x35 DynamicArrayLastTokenRL.
 
-  Unmapped sub-bytes whose handlers are NOT the error stub (i.e., real
-  array methods that *could* appear in cooked bytecode but currently
-  fall through to the `__NFUN_5XXX__` ghost-native path):
-  - +0x02 sub_7FF6CD2EDE80 — 3 sub-exprs (3-arg array method, role TBD)
-  - +0x09 sub_7FF6CD2EF2C0 — DynArrayInsert (3 sub + bounds check, error
-    string `"Attempt to insert an element at %i an %i-element array '%s'"`)
-  - +0x0E sub_7FF6CD2EFBA0 — 2 sub-exprs + delegate cleanup (Sort variant?)
-  - +0x0F sub_7FF6CD2EFDE0 — sister to 0x0E
-  - +0x20 sub_7FF6CD2F4F60 — 4 sub-exprs (TBD)
-  - +0x23 sub_7FF6CD2F26D0 — DynArrayReduce (4 sub + reduce-fn lookup,
-    error strings `"DynArrayReduce: Failed to find 2nd parameter property"`,
-    `"DynArrayReduce: Failed to find reduce function"`)
-  - +0x27 sub_7FF6CD2F3200, +0x2A sub_7FF6CD2F47F0, +0x2D sub_7FF6CD2F45D0,
-    +0x2E sub_7FF6CD2F51E0, +0x2F sub_7FF6CD2F2200,
-    +0x32 sub_7FF6CD2F3600, +0x33 sub_7FF6CD2F38A0, +0x34 sub_7FF6CD2F55A0,
-    +0x35 sub_7FF6CD2EDB50 — additional unmapped real handlers, shapes TBD.
-
-  Sub-bytes 0x10-0x1F and 0x36-0x3F all point to the error handler (intentionally
-  reserved). No observed regression in any sentinel/failing function from
-  the unmapped slots above; flip them speculatively only with concrete
-  evidence per the tautological-mapping anti-pattern.
+  Sub-bytes 0x10-0x1F and 0x36-0x3F all point to the error handler
+  (intentionally reserved). Any future sub-byte addition should still be
+  verified against both this runtime sub-table and the parser case before
+  mapping; do not infer semantics from rendered output alone.
 
 - **0x6B's primitive-cast sub-table**: `funcs_7FF6CD2F735D`. Despite the
   `funcs_` IDA name, the bytes at this address are inlined `jmp r9` jump-
   table machine code, not a function-pointer table — the dispatcher resolves
   cast types through a switch-jump pattern. The baseline UE3 `CastToken`
-  enum (IntToFloat, ByteToInt, ObjectToBool, etc.) is consumed correctly
-  by `PrimitiveCastToken`; no per-cast remapping has been needed.
+  enum (IntToFloat, ByteToInt, ObjectToBool, etc.) is consumed correctly by
+  `PrimitiveCastToken`, plus RL adds qword-specific cast subtypes verified in
+  the May 12 binary at `funcs_7FF768A1735D`: `0x61` qword→int, `0x62`
+  int→qword, `0x63` qword→string, `0x64` string→qword (`wcstoui64`),
+  `0x66` string→UniqueNetId (`FUniqueNetId::FromString`), `0x68`
+  qword→float, and `0x69` float→qword. These are cast subtype bytes after
+  primary opcode `0x6B`, not primary opcodes.
 
 ### Native dispatchers (0x70..0x7F)
 
