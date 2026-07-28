@@ -14,9 +14,13 @@ dotnet run --project .\UELib\NetworkSchemaExporter -- `
   C:\path\to\Engine_decrypted.upk `
   C:\path\to\IpDrv_decrypted.upk `
   C:\path\to\ProjectX_decrypted.upk `
-  C:\path\to\TAGame_decrypted.upk
+  C:\path\to\TAGame_decrypted.upk `
+  C:\path\to\ARC_Standard_P_decrypted.upk `
+  C:\path\to\Stadium_P_decrypted.upk
 ```
 
 The generated JSON records package versions, GUIDs, per-generation net-object
-counts, trajectory actor/archetype objects, inheritance, and ordered local
-network fields. It never writes to an input package.
+counts, trajectory/radar/boost actor objects, inheritance, ordered local
+network fields, and resolved boost archetype positions/defaults. Referenced
+arena prefab packages must be supplied when map actors inherit their transforms
+from those prefabs. It never writes to an input package.

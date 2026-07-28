@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using UELib.Core;
 using UELib.Flags;
 
@@ -17,6 +19,16 @@ internal static class NetworkSchemaExporter
 {
     private const string FormatName = "nebula-ue3-network-schema";
     private const int FormatVersion = 1;
+    private static readonly Regex VectorPattern = new(
+        @"^\(X=(?<x>[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?),Y=(?<y>[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?),Z=(?<z>[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)\)$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly HashSet<string> TargetActorClassNames =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Ball_TA",
+            "Car_TA",
+            "VehiclePickup_Boost_TA",
+        };
 
     public static int Run(string outputPath, IEnumerable<string> packagePaths)
     {
@@ -45,12 +57,24 @@ internal static class NetworkSchemaExporter
             loadedPackages.Add((package, path));
         }
 
-        // The first consumer is the external trajectory provider. Keep only the
-        // Ball/Car class chains and matching actor archetypes; package generation
-        // counts still preserve the exact global package-map index arithmetic.
+        // Keep only the actor class chains and matching objects needed by the
+        // external trajectory, radar, and boost-timer providers. Package
+        // generation counts still preserve exact package-map index arithmetic.
         var selectedClassPaths = SelectTrajectoryClassPaths(loadedPackages.Select(item => item.Package));
+        var exportedObjectsByPath = loadedPackages
+            .SelectMany(item => item.Package.Objects)
+            .Where(item => item.PackageIndex.IsExport)
+            .GroupBy(item => NormalizePath(item.GetPath()), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.First(),
+                StringComparer.OrdinalIgnoreCase);
         var packages = loadedPackages
-            .Select(item => ExportPackage(item.Package, item.Path, selectedClassPaths))
+            .Select(item => ExportPackage(
+                item.Package,
+                item.Path,
+                selectedClassPaths,
+                exportedObjectsByPath))
             .ToList();
 
         var document = new NetworkSchema
@@ -90,7 +114,7 @@ internal static class NetworkSchemaExporter
         var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pending = new Queue<string>(
             classesByPath
-                .Where(item => item.Value.Name == "Ball_TA" || item.Value.Name == "Car_TA")
+                .Where(item => TargetActorClassNames.Contains(item.Value.Name))
                 .Select(item => item.Key));
 
         while (pending.TryDequeue(out var path))
@@ -111,12 +135,15 @@ internal static class NetworkSchemaExporter
     private static PackageSchema ExportPackage(
         UnrealPackage package,
         string sourcePath,
-        HashSet<string> selectedClassPaths)
+        HashSet<string> selectedClassPaths,
+        IReadOnlyDictionary<string, UObject> exportedObjectsByPath)
     {
         var netObjects = package.Objects
-            .Where(item => item.NetIndex >= 0 && IsTrajectoryNetObject(item, selectedClassPaths))
+            .Where(item => IsTrajectoryNetObject(item, selectedClassPaths))
+            .Select(MaterializeOnDemandNetObject)
+            .Where(item => item.NetIndex >= 0)
             .OrderBy(item => item.NetIndex)
-            .Select(ExportObject)
+            .Select(item => ExportObject(item, exportedObjectsByPath))
             .ToList();
 
         var classes = package.Objects
@@ -125,7 +152,7 @@ internal static class NetworkSchemaExporter
                 item.PackageIndex.IsExport &&
                 selectedClassPaths.Contains(NormalizePath(item.GetPath())))
             .OrderBy(item => item.GetPath(), StringComparer.OrdinalIgnoreCase)
-            .Select(ExportClass)
+            .Select(item => ExportClass(item, exportedObjectsByPath))
             .ToList();
 
         return new PackageSchema
@@ -143,6 +170,18 @@ internal static class NetworkSchemaExporter
         };
     }
 
+    private static UObject MaterializeOnDemandNetObject(UObject item)
+    {
+        if (item.ShouldDeserializeOnDemand &&
+            !item.DeserializationState.HasFlag(UObject.ObjectState.Deserialized))
+        {
+#pragma warning disable CS0618 // Object metadata inspection needs the record stream.
+            item.BeginDeserializing();
+#pragma warning restore CS0618
+        }
+        return item;
+    }
+
     private static bool IsTrajectoryNetObject(UObject item, HashSet<string> selectedClassPaths)
     {
         if (item is UClass classObject)
@@ -152,9 +191,7 @@ internal static class NetworkSchemaExporter
 
         for (var objectClass = item.Class; objectClass != null; objectClass = objectClass.Super as UClass)
         {
-            if (objectClass.Name == "Ball_TA" ||
-                objectClass.Name == "Car_TA" ||
-                selectedClassPaths.Contains(NormalizePath(objectClass.GetPath())))
+            if (TargetActorClassNames.Contains(objectClass.Name))
             {
                 return true;
             }
@@ -162,8 +199,22 @@ internal static class NetworkSchemaExporter
         return false;
     }
 
-    private static NetObjectSchema ExportObject(UObject item)
+    private static NetObjectSchema ExportObject(
+        UObject item,
+        IReadOnlyDictionary<string, UObject> exportedObjectsByPath)
     {
+        var archetypePath = item.Archetype == null
+            ? null
+            : NormalizePath(item.Archetype.GetPath());
+        var inheritedSource = ResolveExport(archetypePath, exportedObjectsByPath);
+        var staticLocation =
+            TryReadVectorProperty(item, "Location") ??
+            TryReadVectorProperty(inheritedSource, "Location");
+        var resolvedArchetypePath = inheritedSource?.Archetype == null
+            ? archetypePath
+            : NormalizePath(inheritedSource.Archetype.GetPath());
+        var defaults = ResolveExport(resolvedArchetypePath, exportedObjectsByPath);
+
         return new NetObjectSchema
         {
             NetIndex = item.NetIndex,
@@ -174,10 +225,75 @@ internal static class NetworkSchemaExporter
             ClassName = GetObjectClassName(item),
             IsClassDefaultObject = item.ObjectFlags.HasFlag(ObjectFlag.ClassDefaultObject),
             IsArchetypeObject = item.ObjectFlags.HasFlag(ObjectFlag.ArchetypeObject),
+            ArchetypePath = archetypePath,
+            ResolvedArchetypePath = resolvedArchetypePath,
+            StaticLocation = staticLocation,
+            RespawnSeconds = TryReadFloatProperty(defaults, "RespawnDelay"),
+            BoostType = TryReadStringProperty(defaults, "BoostType"),
         };
     }
 
-    private static ClassSchema ExportClass(UClass item)
+    private static UObject? ResolveExport(
+        string? path,
+        IReadOnlyDictionary<string, UObject> exportedObjectsByPath)
+    {
+        if (string.IsNullOrEmpty(path) ||
+            !exportedObjectsByPath.TryGetValue(path, out var item))
+        {
+            return null;
+        }
+        return MaterializeOnDemandNetObject(item);
+    }
+
+    private static string? TryReadStringProperty(UObject? item, string name)
+    {
+        if (item?.Properties == null)
+        {
+            return null;
+        }
+        try
+        {
+            return item.Properties.Find(name)?.Value;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static float? TryReadFloatProperty(UObject? item, string name)
+    {
+        var value = TryReadStringProperty(item, name);
+        return float.TryParse(
+            value,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var result)
+            ? result
+            : null;
+    }
+
+    private static float[]? TryReadVectorProperty(UObject? item, string name)
+    {
+        var value = TryReadStringProperty(item, name);
+        if (value == null)
+        {
+            return null;
+        }
+        var match = VectorPattern.Match(value);
+        if (!match.Success ||
+            !float.TryParse(match.Groups["x"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var x) ||
+            !float.TryParse(match.Groups["y"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var y) ||
+            !float.TryParse(match.Groups["z"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var z))
+        {
+            return null;
+        }
+        return [x, y, z];
+    }
+
+    private static ClassSchema ExportClass(
+        UClass item,
+        IReadOnlyDictionary<string, UObject> exportedObjectsByPath)
     {
         var fields = item.EnumerateFields()
             .Where(IsLocalNetField)
@@ -192,7 +308,9 @@ internal static class NetworkSchemaExporter
             PackageIndex = item.PackageIndex.Index,
             NetIndex = item.NetIndex,
             SuperPath = item.Super == null ? null : NormalizePath(item.Super.GetPath()),
-            DefaultObject = item.Default == null ? null : ExportObject(item.Default),
+            DefaultObject = item.Default == null
+                ? null
+                : ExportObject(item.Default, exportedObjectsByPath),
             LocalNetFields = fields,
         };
     }
@@ -362,6 +480,11 @@ internal static class NetworkSchemaExporter
         public string ClassName { get; init; } = "";
         public bool IsClassDefaultObject { get; init; }
         public bool IsArchetypeObject { get; init; }
+        public string? ArchetypePath { get; init; }
+        public string? ResolvedArchetypePath { get; init; }
+        public float[]? StaticLocation { get; init; }
+        public float? RespawnSeconds { get; init; }
+        public string? BoostType { get; init; }
     }
 
     private sealed class ClassSchema

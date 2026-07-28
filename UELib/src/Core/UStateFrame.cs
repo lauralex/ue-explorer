@@ -22,7 +22,11 @@ namespace UELib.Core
         public void Deserialize(IUnrealStream stream)
         {
             // version >= 51
-            Node = stream.ReadObject<UStruct>();
+            // Imported state nodes are not always resolvable to a local UStruct. The
+            // serialized offset is controlled by the object reference, not whether
+            // the linker can resolve that reference.
+            int nodeIndex = stream.ReadIndex();
+            Node = stream.Package.IndexToObject(nodeIndex) as UStruct;
             // version >= 51
             StateNode = stream.ReadObject<UState>();
             ProbeMask = stream.Version < (uint)PackageObjectLegacyVersion.ProbeMaskReducedAndIgnoreMaskRemoved
@@ -51,7 +55,7 @@ namespace UELib.Core
 #endif
             if (stream.Version >= (uint)PackageObjectLegacyVersion.AddedStateStackToUStateFrame)
                 stream.ReadArray(out StateStack);
-            if (Node != null) Offset = stream.ReadIndex();
+            if (nodeIndex != 0) Offset = stream.ReadIndex();
         }
 
         public void Serialize(IUnrealStream stream)
