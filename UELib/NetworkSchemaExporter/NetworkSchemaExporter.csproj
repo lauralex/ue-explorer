@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <LangVersion>13.0</LangVersion>
+    <RootNamespace>UELib.NetworkSchemaExporterTool</RootNamespace>
+    <AssemblyName>UELib.NetworkSchemaExporter</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\src\Eliot.UELib.csproj" />
+  </ItemGroup>
+</Project>
